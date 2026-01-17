@@ -461,10 +461,15 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Trendy VybzTech API is running' });
 });
 
+// Admin routes
+const adminRoutes = require('./admin-routes');
+app.use('/admin', adminRoutes);
+
 // Start server
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📦 Inventory API ready`);
+    console.log(`🔐 Admin panel ready at /admin`);
 });
 
 module.exports = app;
