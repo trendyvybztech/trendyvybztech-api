@@ -456,6 +456,164 @@ app.post('/api/inventory/restock', async (req, res) => {
     }
 });
 
+// ============================================
+// ADMIN - CREATE PRODUCT
+// ============================================
+
+app.post('/admin/products', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        const { name, category, base_price, image_url, description } = req.body;
+        
+        // Validation
+        if (!name || !category || !base_price) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Name, category, and base_price are required' 
+            });
+        }
+        
+        // Insert product
+        const result = await client.query(`
+            INSERT INTO products (name, category, base_price, image_url, description)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, name, category, base_price, image_url, description, created_at
+        `, [name, category, base_price, image_url || null, description || null]);
+        
+        res.json({ 
+            success: true, 
+            product: result.rows[0],
+            message: 'Product created successfully' 
+        });
+        
+    } catch (error) {
+        console.error('Create product error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// ============================================
+// ADMIN - ADD PRODUCT VARIANT
+// ============================================
+
+app.post('/admin/products/:productId/variants', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        const { productId } = req.params;
+        const { variant_type, variant_value, stock_quantity, sku, price_modifier } = req.body;
+        
+        // Validation
+        if (!variant_type || !variant_value) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'variant_type and variant_value are required' 
+            });
+        }
+        
+        // Check if product exists
+        const productCheck = await client.query(
+            'SELECT id FROM products WHERE id = $1',
+            [productId]
+        );
+        
+        if (productCheck.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Product not found' 
+            });
+        }
+        
+        // Insert variant
+        const result = await client.query(`
+            INSERT INTO product_variants 
+            (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, created_at
+        `, [
+            productId, 
+            variant_type, 
+            variant_value, 
+            stock_quantity || 0, 
+            sku || null, 
+            price_modifier || 0
+        ]);
+        
+        // Log initial stock
+        if (stock_quantity > 0) {
+            await client.query(`
+                INSERT INTO inventory_transactions 
+                (variant_id, transaction_type, quantity_change, previous_quantity, new_quantity, notes, created_by)
+                VALUES ($1, 'restock', $2, 0, $2, 'Initial stock', 'admin')
+            `, [result.rows[0].id, stock_quantity]);
+        }
+        
+        await client.query('COMMIT');
+        
+        res.json({ 
+            success: true, 
+            variant: result.rows[0],
+            message: 'Variant added successfully' 
+        });
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Add variant error:', error);
+        
+        // Handle unique constraint violation
+        if (error.code === '23505') {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'This variant already exists for this product' 
+            });
+        }
+        
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// ============================================
+// ADMIN - DELETE PRODUCT
+// ============================================
+
+app.delete('/admin/products/:productId', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        const { productId } = req.params;
+        
+        const result = await client.query(
+            'DELETE FROM products WHERE id = $1 RETURNING id',
+            [productId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Product not found' 
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Product deleted successfully' 
+        });
+        
+    } catch (error) {
+        console.error('Delete product error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Trendy VybzTech API is running' });
