@@ -551,8 +551,9 @@ function closeCreateProductModal() {
         <div class="variant-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
             <input type="text" placeholder="Variant Type (e.g., Colour)" class="variant-type" style="flex: 1;">
             <input type="text" placeholder="Variant Value (e.g., Black)" class="variant-value" style="flex: 1;">
-            <input type="number" placeholder="Stock" class="variant-stock" min="0" style="width: 100px;">
-            <input type="text" placeholder="SKU (optional)" class="variant-sku" style="width: 120px;">
+            <input type="number" placeholder="Stock" class="variant-stock" min="0" style="width: 80px;">
+            <input type="text" placeholder="SKU (optional)" class="variant-sku" style="width: 100px;">
+            <input type="text" placeholder="Image URL" class="variant-image" style="flex: 1;">
         </div>
     `;
 }
@@ -565,8 +566,9 @@ function addVariantRow() {
     newRow.innerHTML = `
         <input type="text" placeholder="Variant Type" class="variant-type" style="flex: 1;">
         <input type="text" placeholder="Variant Value" class="variant-value" style="flex: 1;">
-        <input type="number" placeholder="Stock" class="variant-stock" min="0" style="width: 100px;">
-        <input type="text" placeholder="SKU (optional)" class="variant-sku" style="width: 120px;">
+        <input type="number" placeholder="Stock" class="variant-stock" min="0" style="width: 80px;">
+        <input type="text" placeholder="SKU (optional)" class="variant-sku" style="width: 100px;">
+        <input type="text" placeholder="Image URL" class="variant-image" style="flex: 1;">
         <button onclick="this.parentElement.remove()" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">×</button>
     `;
     container.appendChild(newRow);
@@ -626,6 +628,7 @@ async function createProduct() {
             const variantValue = row.querySelector('.variant-value').value.trim();
             const stock = parseInt(row.querySelector('.variant-stock').value) || 0;
             const sku = row.querySelector('.variant-sku').value.trim();
+            const imageUrl = row.querySelector('.variant-image').value.trim();
             
             if (variantType && variantValue) {
                 const variantResponse = await fetch(`${ADMIN_API_URL}/products/${productId}/variants`, {
@@ -639,7 +642,8 @@ async function createProduct() {
                         variant_value: variantValue,
                         stock_quantity: stock,
                         sku: sku || null,
-                        price_modifier: 0
+                        price_modifier: 0,
+                        image_url: imageUrl || null
                     })
                 });
                 
@@ -698,10 +702,11 @@ function openEditProduct(productId) {
                     row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;';
                     row.innerHTML = `
                         <input type="hidden" class="edit-variant-id" value="${variant.variant_id}">
-                        <input type="text" class="edit-variant-type" value="${type}" style="flex: 1;" readonly>
-                        <input type="text" class="edit-variant-value" value="${variant.value}" style="flex: 1;">
-                        <input type="number" class="edit-variant-stock" value="${variant.stock}" min="0" style="width: 100px;">
-                        <input type="text" class="edit-variant-sku" value="${variant.sku || ''}" style="width: 120px;">
+                        <input type="text" class="edit-variant-type" value="${type}" style="flex: 0.8;" readonly>
+                        <input type="text" class="edit-variant-value" value="${variant.value}" style="flex: 0.8;">
+                        <input type="number" class="edit-variant-stock" value="${variant.stock}" min="0" style="width: 70px;">
+                        <input type="text" class="edit-variant-sku" value="${variant.sku || ''}" style="width: 100px;" placeholder="SKU">
+                        <input type="text" class="edit-variant-image" value="${variant.image_url || ''}" style="flex: 1;" placeholder="Image URL">
                         <button onclick="deleteVariant(${variant.variant_id}, this)" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Delete</button>
                     `;
                     container.appendChild(row);
@@ -724,10 +729,11 @@ function addEditVariantRow() {
     row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;';
     row.innerHTML = `
         <input type="hidden" class="edit-variant-id" value="new">
-        <input type="text" class="edit-variant-type" placeholder="Variant Type (e.g., Colour)" style="flex: 1;">
-        <input type="text" class="edit-variant-value" placeholder="Variant Value" style="flex: 1;">
-        <input type="number" class="edit-variant-stock" placeholder="Stock" min="0" style="width: 100px;">
-        <input type="text" class="edit-variant-sku" placeholder="SKU (optional)" style="width: 120px;">
+        <input type="text" class="edit-variant-type" placeholder="Variant Type (e.g., Colour)" style="flex: 0.8;">
+        <input type="text" class="edit-variant-value" placeholder="Variant Value" style="flex: 0.8;">
+        <input type="number" class="edit-variant-stock" placeholder="Stock" min="0" style="width: 70px;">
+        <input type="text" class="edit-variant-sku" placeholder="SKU" style="width: 100px;">
+        <input type="text" class="edit-variant-image" placeholder="Image URL" style="flex: 1;">
         <button onclick="this.parentElement.remove()" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Remove</button>
     `;
     container.appendChild(row);
@@ -780,6 +786,7 @@ async function saveProductEdits() {
             const variantValue = row.querySelector('.edit-variant-value').value.trim();
             const stock = parseInt(row.querySelector('.edit-variant-stock').value) || 0;
             const sku = row.querySelector('.edit-variant-sku').value.trim();
+            const imageUrl = row.querySelector('.edit-variant-image').value.trim();
             
             if (variantType && variantValue) {
                 if (variantId === 'new') {
@@ -795,7 +802,8 @@ async function saveProductEdits() {
                             variant_value: variantValue,
                             stock_quantity: stock,
                             sku: sku || null,
-                            price_modifier: 0
+                            price_modifier: 0,
+                            image_url: imageUrl || null
                         })
                     });
                 } else {
@@ -809,7 +817,8 @@ async function saveProductEdits() {
                         body: JSON.stringify({
                             variant_value: variantValue,
                             stock_quantity: stock,
-                            sku: sku || null
+                            sku: sku || null,
+                            image_url: imageUrl || null
                         })
                     });
                 }
