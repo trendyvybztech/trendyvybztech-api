@@ -55,8 +55,7 @@ app.get('/api/products', async (req, res) => {
                         'stock', pv.stock_quantity,
                         'low_stock_threshold', pv.low_stock_threshold,
                         'sku', pv.sku,
-                        'is_available', pv.is_available,
-                        'image_url', pv.image_url
+                        'is_available', pv.is_available
                     )
                 ) as variants
             FROM products p
@@ -86,8 +85,7 @@ app.get('/api/products', async (req, res) => {
                     available: variant.is_available && variant.stock > 0,
                     low_stock: variant.stock <= variant.low_stock_threshold,
                     variant_id: variant.variant_id,
-                    sku: variant.sku,
-                    image_url: variant.image_url
+                    sku: variant.sku
                 });
             });
             
@@ -534,17 +532,16 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         // Insert variant
         const result = await client.query(`
             INSERT INTO product_variants 
-            (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url, created_at
+            (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, created_at
         `, [
             productId, 
             variant_type, 
             variant_value, 
             stock_quantity || 0, 
             sku || null, 
-            price_modifier || 0,
-            image_url || null
+            price_modifier || 0
         ]);
         
         // Log initial stock
@@ -702,10 +699,10 @@ app.put('/admin/variants/:variantId', async (req, res) => {
         // Update variant
         const result = await client.query(`
             UPDATE product_variants 
-            SET variant_value = $1, stock_quantity = $2, sku = $3, image_url = $4, updated_at = NOW()
-            WHERE id = $5
-            RETURNING id, variant_type, variant_value, stock_quantity, sku, image_url, updated_at
-        `, [variant_value, stock_quantity, sku, image_url, variantId]);
+            SET variant_value = $1, stock_quantity = $2, sku = $3, updated_at = NOW()
+            WHERE id = $4
+            RETURNING id, variant_type, variant_value, stock_quantity, sku, updated_at
+        `, [variant_value, stock_quantity, sku, variantId]);
         
         // Log stock change if any
         if (stockChange !== 0) {
