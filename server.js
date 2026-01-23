@@ -506,7 +506,7 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         await client.query('BEGIN');
         
         const { productId } = req.params;
-        const { variant_type, variant_value, stock_quantity, sku, price_modifier, image_url } = req.body;
+        const { variant_type, variant_value, stock_quantity, sku, price_modifier } = req.body;
         
         // Validation
         if (!variant_type || !variant_value) {
@@ -671,7 +671,7 @@ app.put('/admin/variants/:variantId', async (req, res) => {
         await client.query('BEGIN');
         
         const { variantId } = req.params;
-        const { variant_value, stock_quantity, sku, image_url } = req.body;
+        const { variant_value, stock_quantity, sku } = req.body;
         
         if (!variant_value) {
             return res.status(400).json({ 
