@@ -70,7 +70,6 @@ app.get('/api/products', async (req, res) => {
         // Transform data to match frontend format
         const products = result.rows.map(product => {
             const variants = {};
-            const stockInfo = {};
             
             product.variants.forEach(variant => {
                 if (!variant.type) return;
@@ -399,7 +398,7 @@ app.get('/api/inventory/out-of-stock', async (req, res) => {
     }
 });
 
-// Update inventory (restock)
+// UPDATED: Inventory update (sets absolute value instead of relative addition)
 app.post('/api/inventory/restock', async (req, res) => {
     const client = await pool.connect();
     
@@ -408,7 +407,7 @@ app.post('/api/inventory/restock', async (req, res) => {
         
         const { variant_id, quantity, notes, created_by } = req.body;
         
-        // Get current stock
+        // 1. Get current stock for logging purposes
         const stockQuery = `SELECT stock_quantity FROM product_variants WHERE id = $1;`;
         const stockResult = await client.query(stockQuery, [variant_id]);
         
@@ -417,9 +416,11 @@ app.post('/api/inventory/restock', async (req, res) => {
         }
         
         const previousStock = stockResult.rows[0].stock_quantity;
-        const newStock = previousStock + quantity;
+        // The quantity passed is the NEW absolute stock value
+        const newStock = parseInt(quantity); 
+        const changeAmount = newStock - previousStock;
         
-        // Update stock
+        // 2. Update stock to the EXACT value typed in the dashboard
         const updateQuery = `
             UPDATE product_variants 
             SET stock_quantity = $1, updated_at = CURRENT_TIMESTAMP 
@@ -427,29 +428,29 @@ app.post('/api/inventory/restock', async (req, res) => {
         `;
         await client.query(updateQuery, [newStock, variant_id]);
         
-        // Log transaction
+        // 3. Log the transaction with the calculated difference
         const transactionQuery = `
             INSERT INTO inventory_transactions (
                 variant_id, transaction_type, quantity_change,
                 previous_quantity, new_quantity, notes, created_by
-            ) VALUES ($1, 'restock', $2, $3, $4, $5, $6);
+            ) VALUES ($1, 'adjustment', $2, $3, $4, $5, $6);
         `;
         await client.query(transactionQuery, [
-            variant_id, quantity, previousStock, newStock, notes, created_by || 'admin'
+            variant_id, changeAmount, previousStock, newStock, notes, created_by || 'admin'
         ]);
         
         await client.query('COMMIT');
         
         res.json({
             success: true,
-            message: 'Inventory restocked successfully',
+            message: 'Inventory updated successfully',
             previous_stock: previousStock,
             new_stock: newStock
         });
         
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('Error restocking inventory:', error);
+        console.error('Error updating inventory:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
@@ -466,7 +467,6 @@ app.post('/admin/products', async (req, res) => {
     try {
         const { name, category, base_price, image_url, description } = req.body;
         
-        // Validation
         if (!name || !category || !base_price) {
             return res.status(400).json({ 
                 success: false, 
@@ -474,7 +474,6 @@ app.post('/admin/products', async (req, res) => {
             });
         }
         
-        // Insert product
         const result = await client.query(`
             INSERT INTO products (name, category, base_price, image_url, description)
             VALUES ($1, $2, $3, $4, $5)
@@ -508,7 +507,6 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         const { productId } = req.params;
         const { variant_type, variant_value, stock_quantity, sku, price_modifier } = req.body;
         
-        // Validation
         if (!variant_type || !variant_value) {
             return res.status(400).json({ 
                 success: false, 
@@ -516,7 +514,6 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
             });
         }
         
-        // Check if product exists
         const productCheck = await client.query(
             'SELECT id FROM products WHERE id = $1',
             [productId]
@@ -529,7 +526,6 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
             });
         }
         
-        // Insert variant
         const result = await client.query(`
             INSERT INTO product_variants 
             (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier)
@@ -544,7 +540,6 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
             price_modifier || 0
         ]);
         
-        // Log initial stock
         if (stock_quantity > 0) {
             await client.query(`
                 INSERT INTO inventory_transactions 
@@ -565,7 +560,6 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         await client.query('ROLLBACK');
         console.error('Add variant error:', error);
         
-        // Handle unique constraint violation
         if (error.code === '23505') {
             return res.status(400).json({ 
                 success: false, 
@@ -680,7 +674,6 @@ app.put('/admin/variants/:variantId', async (req, res) => {
             });
         }
         
-        // Get current stock
         const currentStock = await client.query(
             'SELECT stock_quantity FROM product_variants WHERE id = $1',
             [variantId]
@@ -696,7 +689,6 @@ app.put('/admin/variants/:variantId', async (req, res) => {
         const previousQty = currentStock.rows[0].stock_quantity;
         const stockChange = stock_quantity - previousQty;
         
-        // Update variant
         const result = await client.query(`
             UPDATE product_variants 
             SET variant_value = $1, stock_quantity = $2, sku = $3, updated_at = NOW()
@@ -704,7 +696,6 @@ app.put('/admin/variants/:variantId', async (req, res) => {
             RETURNING id, variant_type, variant_value, stock_quantity, sku, updated_at
         `, [variant_value, stock_quantity, sku, variantId]);
         
-        // Log stock change if any
         if (stockChange !== 0) {
             await client.query(`
                 INSERT INTO inventory_transactions 
