@@ -773,6 +773,73 @@
         </div>
     </div>
 
+    <!-- Edit Product Modal -->
+    <div id="editProductModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>✏️ Edit Product</h2>
+                <span class="close" onclick="closeEditProductModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editProductId">
+                
+                <div class="form-group">
+                    <label>Product Name *</label>
+                    <input type="text" id="editProductName" placeholder="e.g., iPhone 15 Pro Case">
+                </div>
+                <div class="form-group">
+                    <label>Category *</label>
+                    <select id="editProductCategory">
+                        <option value="">Select category...</option>
+                        <option value="Airpods Case">AirPods Cases</option>
+                        <option value="Chargers">Chargers</option>
+                        <option value="Screen Protectors">Screen Protectors</option>
+                        <option value="Iphone 11">iPhone 11</option>
+                        <option value="Iphone 11 ProMax">iPhone 11 ProMax</option>
+                        <option value="Iphone 12 Pro">iPhone 12 Pro</option>
+                        <option value="Iphone 12 ProMax">iPhone 12 ProMax</option>
+                        <option value="Iphone 13">iPhone 13</option>
+                        <option value="Iphone 13 Pro">iPhone 13 Pro</option>
+                        <option value="Iphone 13 ProMax">iPhone 13 ProMax</option>
+                        <option value="Iphone 14 Plus">iPhone 14 Plus</option>
+                        <option value="Iphone 14 Pro">iPhone 14 Pro</option>
+                        <option value="Iphone 14 ProMax">iPhone 14 ProMax</option>
+                        <option value="Iphone 15 Plus">iPhone 15 Plus</option>
+                        <option value="Iphone 15 Pro">iPhone 15 Pro</option>
+                        <option value="Iphone 15 ProMax">iPhone 15 ProMax</option>
+                        <option value="Iphone 16 Pro">iPhone 16 Pro</option>
+                        <option value="Iphone 16 ProMax">iPhone 16 ProMax</option>
+                        <option value="S23 Ultra">Samsung S23 Ultra</option>
+                        <option value="S24 Ultra">Samsung S24 Ultra</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Base Price (JMD) *</label>
+                    <input type="number" id="editProductPrice" placeholder="e.g., 1500" min="0" step="50">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="editProductDescription" placeholder="Product description..." rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Image URL</label>
+                    <input type="text" id="editProductImageUrl" placeholder="https://i.imgur.com/example.jpg">
+                </div>
+                
+                <hr style="margin: 20px 0; border-color: rgba(255,255,255,0.1);">
+                
+                <h3 style="margin-bottom: 15px;">Variants</h3>
+                <div id="editVariantsContainer"></div>
+                <button class="btn-secondary" onclick="addEditVariantRow()" style="margin-bottom: 20px;">+ Add Variant</button>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="closeEditProductModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveProductEdits()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Create Product Modal -->
     <div id="createProductModal" class="modal">
         <div class="modal-content" style="max-width: 600px;">

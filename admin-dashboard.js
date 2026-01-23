@@ -303,8 +303,11 @@ async function loadInventory() {
         
         if (data.success) {
             const rows = [];
+            const productMap = new Map();
             
             data.products.forEach(product => {
+                productMap.set(product.id, product);
+                
                 if (product.variants) {
                     Object.entries(product.variants).forEach(([type, variantArray]) => {
                         if (Array.isArray(variantArray)) {
@@ -328,6 +331,9 @@ async function loadInventory() {
                                         <td>JMD $${product.price.toFixed(2)}</td>
                                         <td><span class="badge badge-${status}">${statusText}</span></td>
                                         <td>
+                                            <button class="btn-small btn-edit" onclick="openEditProduct(${product.id})" style="margin-right: 5px;">
+                                                ✏️ Edit
+                                            </button>
                                             <button class="btn-small btn-edit" onclick="quickRestock(${variant.variant_id}, '${product.name}', '${variant.value}')">
                                                 Restock
                                             </button>
@@ -342,6 +348,9 @@ async function loadInventory() {
             
             tbody.innerHTML = rows.length > 0 ? rows.join('') : 
                 '<tr><td colspan="7" style="text-align: center; color: var(--gray);">No products found</td></tr>';
+            
+            // Store product data globally for edit
+            window.productsData = data.products;
         }
     } catch (error) {
         console.error('Error loading inventory:', error);
@@ -661,3 +670,194 @@ window.onclick = function(event) {
         closeCreateProductModal();
     }
 }
+
+// ==================== EDIT PRODUCT ====================
+
+function openEditProduct(productId) {
+    const product = window.productsData.find(p => p.id === productId);
+    if (!product) return;
+    
+    // Populate form
+    document.getElementById('editProductId').value = product.id;
+    document.getElementById('editProductName').value = product.name;
+    document.getElementById('editProductCategory').value = product.category;
+    document.getElementById('editProductPrice').value = product.price;
+    document.getElementById('editProductDescription').value = product.description || '';
+    document.getElementById('editProductImageUrl').value = product.image || '';
+    
+    // Load variants
+    const container = document.getElementById('editVariantsContainer');
+    container.innerHTML = '';
+    
+    if (product.variants) {
+        Object.entries(product.variants).forEach(([type, variantArray]) => {
+            if (Array.isArray(variantArray)) {
+                variantArray.forEach(variant => {
+                    const row = document.createElement('div');
+                    row.className = 'edit-variant-row';
+                    row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;';
+                    row.innerHTML = `
+                        <input type="hidden" class="edit-variant-id" value="${variant.variant_id}">
+                        <input type="text" class="edit-variant-type" value="${type}" style="flex: 1;" readonly>
+                        <input type="text" class="edit-variant-value" value="${variant.value}" style="flex: 1;">
+                        <input type="number" class="edit-variant-stock" value="${variant.stock}" min="0" style="width: 100px;">
+                        <input type="text" class="edit-variant-sku" value="${variant.sku || ''}" style="width: 120px;">
+                        <button onclick="deleteVariant(${variant.variant_id}, this)" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Delete</button>
+                    `;
+                    container.appendChild(row);
+                });
+            }
+        });
+    }
+    
+    document.getElementById('editProductModal').style.display = 'block';
+}
+
+function closeEditProductModal() {
+    document.getElementById('editProductModal').style.display = 'none';
+}
+
+function addEditVariantRow() {
+    const container = document.getElementById('editVariantsContainer');
+    const row = document.createElement('div');
+    row.className = 'edit-variant-row';
+    row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;';
+    row.innerHTML = `
+        <input type="hidden" class="edit-variant-id" value="new">
+        <input type="text" class="edit-variant-type" placeholder="Variant Type (e.g., Colour)" style="flex: 1;">
+        <input type="text" class="edit-variant-value" placeholder="Variant Value" style="flex: 1;">
+        <input type="number" class="edit-variant-stock" placeholder="Stock" min="0" style="width: 100px;">
+        <input type="text" class="edit-variant-sku" placeholder="SKU (optional)" style="width: 120px;">
+        <button onclick="this.parentElement.remove()" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Remove</button>
+    `;
+    container.appendChild(row);
+}
+
+async function saveProductEdits() {
+    const productId = document.getElementById('editProductId').value;
+    const name = document.getElementById('editProductName').value.trim();
+    const category = document.getElementById('editProductCategory').value;
+    const base_price = parseFloat(document.getElementById('editProductPrice').value);
+    const description = document.getElementById('editProductDescription').value.trim();
+    const image_url = document.getElementById('editProductImageUrl').value.trim();
+    
+    if (!name || !category || !base_price) {
+        showNotification('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        // Update product
+        const productResponse = await fetch(`${ADMIN_API_URL}/products/${productId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                name,
+                category,
+                base_price,
+                image_url: image_url || null,
+                description: description || null
+            })
+        });
+        
+        const productData = await productResponse.json();
+        
+        if (!productData.success) {
+            throw new Error(productData.error || 'Failed to update product');
+        }
+        
+        // Update variants
+        const variantRows = document.querySelectorAll('.edit-variant-row');
+        
+        for (const row of variantRows) {
+            const variantId = row.querySelector('.edit-variant-id').value;
+            const variantType = row.querySelector('.edit-variant-type').value.trim();
+            const variantValue = row.querySelector('.edit-variant-value').value.trim();
+            const stock = parseInt(row.querySelector('.edit-variant-stock').value) || 0;
+            const sku = row.querySelector('.edit-variant-sku').value.trim();
+            
+            if (variantType && variantValue) {
+                if (variantId === 'new') {
+                    // Add new variant
+                    await fetch(`${ADMIN_API_URL}/products/${productId}/variants`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({
+                            variant_type: variantType,
+                            variant_value: variantValue,
+                            stock_quantity: stock,
+                            sku: sku || null,
+                            price_modifier: 0
+                        })
+                    });
+                } else {
+                    // Update existing variant
+                    await fetch(`${ADMIN_API_URL}/variants/${variantId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({
+                            variant_value: variantValue,
+                            stock_quantity: stock,
+                            sku: sku || null
+                        })
+                    });
+                }
+            }
+        }
+        
+        showLoading(false);
+        showNotification('Product updated successfully!', 'success');
+        closeEditProductModal();
+        loadInventory();
+        
+    } catch (error) {
+        showLoading(false);
+        console.error('Update product error:', error);
+        showNotification(error.message || 'Failed to update product', 'error');
+    }
+}
+
+async function deleteVariant(variantId, button) {
+    if (!confirm('Delete this variant? This cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/variants/${variantId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            button.parentElement.remove();
+            showNotification('Variant deleted', 'success');
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (error) {
+        showNotification(error.message || 'Failed to delete variant', 'error');
+    }
+}
+
+// Close edit modal on outside click
+window.addEventListener('click', function(event) {
+    const editModal = document.getElementById('editProductModal');
+    if (event.target === editModal) {
+        closeEditProductModal();
+    }
+});

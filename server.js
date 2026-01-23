@@ -614,6 +614,157 @@ app.delete('/admin/products/:productId', async (req, res) => {
     }
 });
 
+// ============================================
+// ADMIN - UPDATE PRODUCT
+// ============================================
+
+app.put('/admin/products/:productId', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        const { productId } = req.params;
+        const { name, category, base_price, image_url, description } = req.body;
+        
+        if (!name || !category || !base_price) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Name, category, and base_price are required' 
+            });
+        }
+        
+        const result = await client.query(`
+            UPDATE products 
+            SET name = $1, category = $2, base_price = $3, image_url = $4, description = $5, updated_at = NOW()
+            WHERE id = $6
+            RETURNING id, name, category, base_price, image_url, description, updated_at
+        `, [name, category, base_price, image_url, description, productId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Product not found' 
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            product: result.rows[0],
+            message: 'Product updated successfully' 
+        });
+        
+    } catch (error) {
+        console.error('Update product error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// ============================================
+// ADMIN - UPDATE VARIANT
+// ============================================
+
+app.put('/admin/variants/:variantId', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        const { variantId } = req.params;
+        const { variant_value, stock_quantity, sku } = req.body;
+        
+        if (!variant_value) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'variant_value is required' 
+            });
+        }
+        
+        // Get current stock
+        const currentStock = await client.query(
+            'SELECT stock_quantity FROM product_variants WHERE id = $1',
+            [variantId]
+        );
+        
+        if (currentStock.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Variant not found' 
+            });
+        }
+        
+        const previousQty = currentStock.rows[0].stock_quantity;
+        const stockChange = stock_quantity - previousQty;
+        
+        // Update variant
+        const result = await client.query(`
+            UPDATE product_variants 
+            SET variant_value = $1, stock_quantity = $2, sku = $3, updated_at = NOW()
+            WHERE id = $4
+            RETURNING id, variant_type, variant_value, stock_quantity, sku, updated_at
+        `, [variant_value, stock_quantity, sku, variantId]);
+        
+        // Log stock change if any
+        if (stockChange !== 0) {
+            await client.query(`
+                INSERT INTO inventory_transactions 
+                (variant_id, transaction_type, quantity_change, previous_quantity, new_quantity, notes, created_by)
+                VALUES ($1, 'adjustment', $2, $3, $4, 'Admin edit', 'admin')
+            `, [variantId, stockChange, previousQty, stock_quantity]);
+        }
+        
+        await client.query('COMMIT');
+        
+        res.json({ 
+            success: true, 
+            variant: result.rows[0],
+            message: 'Variant updated successfully' 
+        });
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Update variant error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// ============================================
+// ADMIN - DELETE VARIANT
+// ============================================
+
+app.delete('/admin/variants/:variantId', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        const { variantId } = req.params;
+        
+        const result = await client.query(
+            'DELETE FROM product_variants WHERE id = $1 RETURNING id',
+            [variantId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Variant not found' 
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            message: 'Variant deleted successfully' 
+        });
+        
+    } catch (error) {
+        console.error('Delete variant error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Trendy VybzTech API is running' });
