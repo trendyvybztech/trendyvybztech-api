@@ -237,14 +237,23 @@ app.post('/api/orders', async (req, res) => {
         
         // Insert order items and reduce inventory
         for (const item of items) {
+            console.log('Processing item:', item);
+            
             // Find variant ID
             const variantQuery = `
-                SELECT id, stock_quantity 
-                FROM product_variants 
-                WHERE product_id = $1 
-                    AND variant_type = $2 
-                    AND variant_value = $3;
+                SELECT pv.id, pv.stock_quantity, p.name as product_name
+                FROM product_variants pv
+                JOIN products p ON p.id = pv.product_id
+                WHERE pv.product_id = $1 
+                    AND LOWER(pv.variant_type) = LOWER($2)
+                    AND LOWER(pv.variant_value) = LOWER($3);
             `;
+            
+            console.log('Searching for variant:', {
+                product_id: item.product_id,
+                variant_type: item.variant_type,
+                variant_value: item.variant_value
+            });
             
             const variantResult = await client.query(variantQuery, [
                 item.product_id,
@@ -252,15 +261,19 @@ app.post('/api/orders', async (req, res) => {
                 item.variant_value
             ]);
             
+            console.log('Variant search result:', variantResult.rows);
+            
             if (variantResult.rows.length === 0) {
-                throw new Error(`Variant not found for product ${item.product_id}`);
+                throw new Error(`Variant not found for product ${item.product_id}, type: ${item.variant_type}, value: ${item.variant_value}`);
             }
             
             const variant = variantResult.rows[0];
             
+            console.log('Found variant:', variant);
+            
             // Check if enough stock
             if (variant.stock_quantity < item.quantity) {
-                throw new Error(`Insufficient stock for ${item.product_name}. Available: ${variant.stock_quantity}`);
+                throw new Error(`Insufficient stock for ${item.product_name}. Available: ${variant.stock_quantity}, Requested: ${item.quantity}`);
             }
             
             // Insert order item
@@ -284,14 +297,18 @@ app.post('/api/orders', async (req, res) => {
             
             // Reduce inventory
             const newStock = variant.stock_quantity - item.quantity;
+            console.log(`Reducing stock for variant ${variant.id}: ${variant.stock_quantity} -> ${newStock}`);
+            
             const updateStockQuery = `
                 UPDATE product_variants 
                 SET stock_quantity = $1, 
                     updated_at = CURRENT_TIMESTAMP 
-                WHERE id = $2;
+                WHERE id = $2
+                RETURNING stock_quantity;
             `;
             
-            await client.query(updateStockQuery, [newStock, variant.id]);
+            const updateResult = await client.query(updateStockQuery, [newStock, variant.id]);
+            console.log('Stock updated:', updateResult.rows[0]);
             
             // Log inventory transaction
             const transactionQuery = `
