@@ -908,15 +908,28 @@ async function viewOrderDetails(orderId) {
         const order = data.order;
         const items = Array.isArray(order.items) ? order.items : [];
         
-        const itemsHTML = items.map(item => `
-            <tr>
-                <td>${item.product_name}</td>
-                <td>${JSON.parse(item.variant_details || '{}').colour || JSON.parse(item.variant_details || '{}').color || 'Standard'}</td>
-                <td>${item.quantity}</td>
-                <td>JMD $${parseFloat(item.unit_price).toFixed(2)}</td>
-                <td>JMD $${parseFloat(item.total_price).toFixed(2)}</td>
-            </tr>
-        `).join('');
+        const itemsHTML = items.map(item => {
+            let variantDisplay = 'Standard';
+            try {
+                if (item.variant_details) {
+                    const details = typeof item.variant_details === 'string' ? 
+                        JSON.parse(item.variant_details) : item.variant_details;
+                    variantDisplay = details.colour || details.color || details.variant || 'Standard';
+                }
+            } catch (e) {
+                variantDisplay = 'Standard';
+            }
+            
+            return `
+                <tr>
+                    <td>${item.product_name}</td>
+                    <td>${variantDisplay}</td>
+                    <td>${item.quantity}</td>
+                    <td>JMD $${parseFloat(item.unit_price).toFixed(2)}</td>
+                    <td>JMD $${parseFloat(item.total_price).toFixed(2)}</td>
+                </tr>
+            `;
+        }).join('');
         
         const modal = document.createElement('div');
         modal.className = 'modal';
