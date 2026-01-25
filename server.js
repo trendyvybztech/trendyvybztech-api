@@ -333,6 +333,50 @@ app.post('/api/orders', async (req, res) => {
     }
 });
 
+// Get all orders (for admin)
+app.get('/api/orders', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                o.id,
+                o.order_id,
+                o.customer_name,
+                o.customer_email,
+                o.customer_phone,
+                o.customer_address,
+                o.subtotal,
+                o.delivery_fee,
+                o.total,
+                o.payment_method,
+                o.payment_status,
+                o.order_status,
+                o.delivery_option,
+                o.delivery_parish,
+                o.created_at,
+                json_agg(
+                    json_build_object(
+                        'product_name', oi.product_name,
+                        'variant_details', oi.variant_details,
+                        'quantity', oi.quantity,
+                        'unit_price', oi.unit_price,
+                        'total_price', oi.total_price
+                    )
+                ) as items
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            GROUP BY o.id
+            ORDER BY o.created_at DESC;
+        `;
+        
+        const result = await pool.query(query);
+        
+        res.json({ success: true, orders: result.rows });
+    } catch (error) {
+        console.error('Error fetching orders:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Get order by order_id
 app.get('/api/orders/:order_id', async (req, res) => {
     try {

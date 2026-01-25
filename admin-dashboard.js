@@ -322,20 +322,12 @@ async function loadInventory() {
                                         <td>${product.name}</td>
                                         <td>${product.category}</td>
                                         <td>${variant.value}</td>
-                                        <td>
-                                            <input type="number" value="${variant.stock}" 
-                                                   min="0" 
-                                                   style="width: 80px; padding: 5px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 5px;"
-                                                   onchange="updateStock(${variant.variant_id}, this.value)">
-                                        </td>
+                                        <td>${variant.stock}</td>
                                         <td>JMD $${product.price.toFixed(2)}</td>
                                         <td><span class="badge badge-${status}">${statusText}</span></td>
                                         <td>
-                                            <button class="btn-small btn-edit" onclick="openEditProduct(${product.id})" style="margin-right: 5px;">
+                                            <button class="btn-small btn-edit" onclick="openEditProduct(${product.id})">
                                                 ✏️ Edit
-                                            </button>
-                                            <button class="btn-small btn-edit" onclick="quickRestock(${variant.variant_id}, '${product.name}', '${variant.value}')">
-                                                Restock
                                             </button>
                                         </td>
                                     </tr>
@@ -362,9 +354,40 @@ async function loadOrders() {
     const tbody = document.getElementById('orders-table');
     tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>';
     
-    // This would call your orders API endpoint
-    // For now, showing placeholder
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--gray);">No orders yet</td></tr>';
+    try {
+        const response = await fetch(`${API_URL}/orders`);
+        const data = await response.json();
+        
+        if (data.success && data.orders.length > 0) {
+            const rows = data.orders.map(order => {
+                const statusClass = order.order_status === 'delivered' ? 'success' : 
+                                   order.order_status === 'cancelled' ? 'danger' : 'warning';
+                const date = new Date(order.created_at).toLocaleDateString();
+                
+                return `
+                    <tr>
+                        <td>${order.order_id}</td>
+                        <td>${order.customer_name}</td>
+                        <td>${date}</td>
+                        <td>JMD $${parseFloat(order.total).toFixed(2)}</td>
+                        <td><span class="badge badge-${statusClass}">${order.order_status}</span></td>
+                        <td>
+                            <button class="btn-small btn-view" onclick="viewOrderDetails('${order.order_id}')">
+                                View
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            tbody.innerHTML = rows;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--gray);">No orders yet</td></tr>';
+        }
+    } catch (error) {
+        console.error('Error loading orders:', error);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--danger);">Error loading orders</td></tr>';
+    }
 }
 
 async function loadLowStock() {
@@ -870,3 +893,9 @@ window.addEventListener('click', function(event) {
         closeEditProductModal();
     }
 });
+
+// View order details
+function viewOrderDetails(orderId) {
+    // Placeholder for order details modal
+    alert(`View order details for: ${orderId}\n\nOrder details modal coming soon.`);
+}
