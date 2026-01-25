@@ -895,7 +895,151 @@ window.addEventListener('click', function(event) {
 });
 
 // View order details
-function viewOrderDetails(orderId) {
-    // Placeholder for order details modal
-    alert(`View order details for: ${orderId}\n\nOrder details modal coming soon.`);
+async function viewOrderDetails(orderId) {
+    try {
+        const response = await fetch(`${API_URL}/orders/${orderId}`);
+        const data = await response.json();
+        
+        if (!data.success || !data.order) {
+            alert('Order not found');
+            return;
+        }
+        
+        const order = data.order;
+        const items = Array.isArray(order.items) ? order.items : [];
+        
+        const itemsHTML = items.map(item => `
+            <tr>
+                <td>${item.product_name}</td>
+                <td>${JSON.parse(item.variant_details || '{}').colour || JSON.parse(item.variant_details || '{}').color || 'Standard'}</td>
+                <td>${item.quantity}</td>
+                <td>JMD $${parseFloat(item.unit_price).toFixed(2)}</td>
+                <td>JMD $${parseFloat(item.total_price).toFixed(2)}</td>
+            </tr>
+        `).join('');
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header">
+                    <h2>📦 Order Details: ${order.order_id}</h2>
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                        <div>
+                            <h3>Customer Information</h3>
+                            <p><strong>Name:</strong> ${order.customer_name}</p>
+                            <p><strong>Email:</strong> ${order.customer_email}</p>
+                            <p><strong>Phone:</strong> ${order.customer_phone || 'N/A'}</p>
+                            <p><strong>Address:</strong> ${order.customer_address}</p>
+                        </div>
+                        <div>
+                            <h3>Order Information</h3>
+                            <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleDateString()}</p>
+                            <p><strong>Payment:</strong> ${order.payment_method}</p>
+                            <p><strong>Delivery:</strong> ${order.delivery_option || 'N/A'}</p>
+                            <p><strong>Status:</strong> <span class="badge badge-warning">${order.order_status}</span></p>
+                        </div>
+                    </div>
+                    
+                    <h3>Order Items</h3>
+                    <table style="width: 100%; margin-bottom: 20px;">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Variant</th>
+                                <th>Quantity</th>
+                                <th>Unit Price</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${itemsHTML}
+                        </tbody>
+                    </table>
+                    
+                    <div style="text-align: right; border-top: 2px solid rgba(255,255,255,0.1); padding-top: 15px;">
+                        <p><strong>Subtotal:</strong> JMD $${parseFloat(order.subtotal).toFixed(2)}</p>
+                        <p><strong>Delivery Fee:</strong> JMD $${parseFloat(order.delivery_fee).toFixed(2)}</p>
+                        <p style="font-size: 1.2rem; color: var(--primary);"><strong>Total:</strong> JMD $${parseFloat(order.total).toFixed(2)}</p>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        ${order.order_status !== 'delivered' && order.order_status !== 'refunded' ? `
+                            <button class="btn-primary" onclick="updateOrderStatus('${order.order_id}', 'delivered')" style="background: var(--success);">
+                                ✅ Mark as Completed
+                            </button>
+                        ` : ''}
+                        ${order.order_status !== 'refunded' ? `
+                            <button class="btn-secondary" onclick="refundOrder('${order.order_id}')" style="background: var(--danger);">
+                                💸 Refund Order
+                            </button>
+                        ` : ''}
+                        <button class="btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+    } catch (error) {
+        console.error('Error loading order details:', error);
+        alert('Failed to load order details');
+    }
+}
+
+async function updateOrderStatus(orderId, newStatus) {
+    try {
+        const response = await fetch(`${API_URL}/orders/${orderId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: newStatus })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(`Order marked as ${newStatus}`, 'success');
+            document.querySelector('.modal').remove();
+            loadOrders();
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (error) {
+        console.error('Error updating order status:', error);
+        showNotification(error.message || 'Failed to update order status', 'error');
+    }
+}
+
+async function refundOrder(orderId) {
+    if (!confirm('Refund this order? This will restore stock quantities and cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/orders/${orderId}/refund`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('Order refunded successfully. Stock has been restored.', 'success');
+            document.querySelector('.modal').remove();
+            loadOrders();
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (error) {
+        console.error('Error refunding order:', error);
+        showNotification(error.message || 'Failed to refund order', 'error');
+    }
 }

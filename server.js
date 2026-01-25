@@ -350,6 +350,112 @@ app.post('/api/orders', async (req, res) => {
     }
 });
 
+// Update order status
+app.put('/api/orders/:order_id/status', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        const { order_id } = req.params;
+        const { status } = req.body;
+        
+        const result = await client.query(`
+            UPDATE orders 
+            SET order_status = $1, updated_at = NOW()
+            WHERE order_id = $2
+            RETURNING *
+        `, [status, order_id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Order not found' });
+        }
+        
+        res.json({ success: true, order: result.rows[0] });
+    } catch (error) {
+        console.error('Error updating order status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Refund order
+app.post('/api/orders/:order_id/refund', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        const { order_id } = req.params;
+        
+        // Get order details
+        const orderQuery = `
+            SELECT o.id, o.order_id
+            FROM orders o
+            WHERE o.order_id = $1
+        `;
+        
+        const orderResult = await client.query(orderQuery, [order_id]);
+        
+        if (orderResult.rows.length === 0) {
+            throw new Error('Order not found');
+        }
+        
+        const order = orderResult.rows[0];
+        
+        // Get order items
+        const itemsQuery = `
+            SELECT variant_id, quantity
+            FROM order_items
+            WHERE order_id = $1
+        `;
+        
+        const itemsResult = await client.query(itemsQuery, [order.id]);
+        
+        // Restore stock for each item
+        for (const item of itemsResult.rows) {
+            const stockQuery = `
+                SELECT stock_quantity FROM product_variants WHERE id = $1
+            `;
+            const stockResult = await client.query(stockQuery, [item.variant_id]);
+            
+            if (stockResult.rows.length > 0) {
+                const currentStock = stockResult.rows[0].stock_quantity;
+                const newStock = currentStock + item.quantity;
+                
+                await client.query(`
+                    UPDATE product_variants
+                    SET stock_quantity = $1, updated_at = NOW()
+                    WHERE id = $2
+                `, [newStock, item.variant_id]);
+                
+                // Log transaction
+                await client.query(`
+                    INSERT INTO inventory_transactions
+                    (variant_id, transaction_type, quantity_change, previous_quantity, new_quantity, reference_order_id, notes, created_by)
+                    VALUES ($1, 'refund', $2, $3, $4, $5, 'Order refunded', 'admin')
+                `, [item.variant_id, item.quantity, currentStock, newStock, order_id]);
+            }
+        }
+        
+        // Update order status
+        await client.query(`
+            UPDATE orders
+            SET order_status = 'refunded', payment_status = 'refunded', updated_at = NOW()
+            WHERE order_id = $1
+        `, [order_id]);
+        
+        await client.query('COMMIT');
+        
+        res.json({ success: true, message: 'Order refunded and stock restored' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error refunding order:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Get all orders (for admin)
 app.get('/api/orders', async (req, res) => {
     try {
