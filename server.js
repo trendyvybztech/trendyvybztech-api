@@ -679,7 +679,7 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         await client.query('BEGIN');
         
         const { productId } = req.params;
-        const { variant_type, variant_value, stock_quantity, sku, price_modifier } = req.body;
+        const { variant_type, variant_value, stock_quantity, sku, price_modifier, image_url } = req.body;
         
         // Validation
         if (!variant_type || !variant_value) {
@@ -705,16 +705,17 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         // Insert variant
         const result = await client.query(`
             INSERT INTO product_variants 
-            (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, created_at
+            (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url, created_at
         `, [
             productId, 
             variant_type, 
             variant_value, 
             stock_quantity || 0, 
             sku || null, 
-            price_modifier || 0
+            price_modifier || 0,
+            image_url || null
         ]);
         
         // Log initial stock
@@ -844,7 +845,7 @@ app.put('/admin/variants/:variantId', async (req, res) => {
         await client.query('BEGIN');
         
         const { variantId } = req.params;
-        const { variant_value, stock_quantity, sku } = req.body;
+        const { variant_value, stock_quantity, sku, image_url } = req.body;
         
         if (!variant_value) {
             return res.status(400).json({ 
@@ -872,10 +873,10 @@ app.put('/admin/variants/:variantId', async (req, res) => {
         // Update variant
         const result = await client.query(`
             UPDATE product_variants 
-            SET variant_value = $1, stock_quantity = $2, sku = $3, updated_at = NOW()
-            WHERE id = $4
-            RETURNING id, variant_type, variant_value, stock_quantity, sku, updated_at
-        `, [variant_value, stock_quantity, sku, variantId]);
+            SET variant_value = $1, stock_quantity = $2, sku = $3, image_url = $4, updated_at = NOW()
+            WHERE id = $5
+            RETURNING id, variant_type, variant_value, stock_quantity, sku, image_url, updated_at
+        `, [variant_value, stock_quantity, sku, image_url, variantId]);
         
         // Log stock change if any
         if (stockChange !== 0) {
