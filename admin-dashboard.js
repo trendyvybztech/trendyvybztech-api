@@ -361,6 +361,7 @@ async function loadOrders() {
         if (data.success && data.orders.length > 0) {
             const rows = data.orders.map(order => {
                 const statusClass = order.order_status === 'delivered' ? 'success' : 
+                                   order.order_status === 'refunded' ? 'danger' :
                                    order.order_status === 'cancelled' ? 'danger' : 'warning';
                 const date = new Date(order.created_at).toLocaleDateString();
                 
@@ -702,18 +703,40 @@ window.onclick = function(event) {
 
 function openEditProduct(productId) {
     const product = window.productsData.find(p => p.id === productId);
-    if (!product) return;
+    if (!product) {
+        console.error('Product not found:', productId);
+        return;
+    }
     
-    // Populate form
-    document.getElementById('editProductId').value = product.id;
-    document.getElementById('editProductName').value = product.name;
-    document.getElementById('editProductCategory').value = product.category;
-    document.getElementById('editProductPrice').value = product.price;
-    document.getElementById('editProductDescription').value = product.description || '';
-    document.getElementById('editProductImageUrl').value = product.image || '';
+    // Check if modal elements exist
+    const modal = document.getElementById('editProductModal');
+    if (!modal) {
+        console.error('Edit product modal not found');
+        return;
+    }
+    
+    // Populate form with null checks
+    const idField = document.getElementById('editProductId');
+    const nameField = document.getElementById('editProductName');
+    const categoryField = document.getElementById('editProductCategory');
+    const priceField = document.getElementById('editProductPrice');
+    const descField = document.getElementById('editProductDescription');
+    const imageField = document.getElementById('editProductImageUrl');
+    
+    if (idField) idField.value = product.id;
+    if (nameField) nameField.value = product.name;
+    if (categoryField) categoryField.value = product.category;
+    if (priceField) priceField.value = product.price;
+    if (descField) descField.value = product.description || '';
+    if (imageField) imageField.value = product.image || '';
     
     // Load variants
     const container = document.getElementById('editVariantsContainer');
+    if (!container) {
+        console.error('Edit variants container not found');
+        return;
+    }
+    
     container.innerHTML = '';
     
     if (product.variants) {
@@ -738,7 +761,7 @@ function openEditProduct(productId) {
         });
     }
     
-    document.getElementById('editProductModal').style.display = 'block';
+    modal.style.display = 'block';
 }
 
 function closeEditProductModal() {
