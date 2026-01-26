@@ -220,6 +220,7 @@ app.post('/api/orders', async (req, res) => {
             payment_method,
             delivery_option,
             delivery_parish,
+            rewards_discount,
             items
         } = req.body;
         
@@ -228,15 +229,15 @@ app.post('/api/orders', async (req, res) => {
             INSERT INTO orders (
                 order_id, customer_name, customer_email, customer_phone,
                 customer_address, subtotal, delivery_fee, total,
-                payment_method, delivery_option, delivery_parish
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                payment_method, delivery_option, delivery_parish, rewards_discount
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING id;
         `;
         
         const orderResult = await client.query(orderQuery, [
             order_id, customer_name, customer_email, customer_phone,
             customer_address, subtotal, delivery_fee, total,
-            payment_method, delivery_option, delivery_parish
+            payment_method, delivery_option, delivery_parish, rewards_discount || 0
         ]);
         
         const db_order_id = orderResult.rows[0].id;

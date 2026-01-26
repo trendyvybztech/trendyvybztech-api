@@ -1048,6 +1048,7 @@ async function viewOrderDetails(orderId) {
                     <div style="text-align: right; border-top: 2px solid rgba(255,255,255,0.1); padding-top: 15px;">
                         <p><strong>Subtotal:</strong> JMD $${parseFloat(order.subtotal).toFixed(2)}</p>
                         <p><strong>Delivery Fee:</strong> JMD $${parseFloat(order.delivery_fee).toFixed(2)}</p>
+                        ${order.rewards_discount > 0 ? `<p style="color: #00D9FF;"><strong>Rewards Discount:</strong> -JMD $${parseFloat(order.rewards_discount).toFixed(2)}</p>` : ''}
                         <p style="font-size: 1.2rem; color: var(--primary);"><strong>Total:</strong> JMD $${parseFloat(order.total).toFixed(2)}</p>
                     </div>
                     
