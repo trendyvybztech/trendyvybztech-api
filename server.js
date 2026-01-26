@@ -33,10 +33,7 @@ pool.query('SELECT NOW()', (err, res) => {
 });
 
 // ============================================
-// PRODUCT ENDPOINTS
-// ============================================
-
-// Get all products with their variants and stock info
+// // Get all products with their variants and stock info
 app.get('/api/products', async (req, res) => {
     try {
         const query = `
@@ -44,8 +41,8 @@ app.get('/api/products', async (req, res) => {
                 p.id,
                 p.name,
                 p.category,
-                p.base_price as price,
-                p.image_url as image,
+                p.base_price AS price,
+                p.image_url AS image,
                 p.description,
                 COALESCE(
                     json_agg(
@@ -57,17 +54,26 @@ app.get('/api/products', async (req, res) => {
                             'low_stock_threshold', pv.low_stock_threshold,
                             'sku', pv.sku,
                             'is_available', pv.is_available,
-                            'image_url', COALESCE(pv.image_url, '')
+                            'image_url', COALESCE(pv.image_url, p.image_url)
                         )
                     ) FILTER (WHERE pv.id IS NOT NULL),
                     '[]'::json
-                ) as variants
+                ) AS variants
             FROM products p
-            LEFT JOIN product_variants pv ON p.id = pv.product_id
+            LEFT JOIN product_variants pv ON pv.product_id = p.id
             WHERE p.is_active = true
             GROUP BY p.id
             ORDER BY p.category, p.name;
         `;
+
+        const { rows } = await pool.query(query);
+        res.json({ success: true, data: rows });
+    } catch (err) {
+        console.error('Error fetching products:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
         
         const result = await pool.query(query);
         
