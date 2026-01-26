@@ -47,17 +47,20 @@ app.get('/api/products', async (req, res) => {
                 p.base_price as price,
                 p.image_url as image,
                 p.description,
-                json_agg(
-                    json_build_object(
-                        'variant_id', pv.id,
-                        'type', pv.variant_type,
-                        'value', pv.variant_value,
-                        'stock', pv.stock_quantity,
-                        'low_stock_threshold', pv.low_stock_threshold,
-                        'sku', pv.sku,
-                        'is_available', pv.is_available,
-                        'image_url', pv.image_url
-                    )
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'variant_id', pv.id,
+                            'type', pv.variant_type,
+                            'value', pv.variant_value,
+                            'stock', pv.stock_quantity,
+                            'low_stock_threshold', pv.low_stock_threshold,
+                            'sku', pv.sku,
+                            'is_available', pv.is_available,
+                            'image_url', COALESCE(pv.image_url, '')
+                        )
+                    ) FILTER (WHERE pv.id IS NOT NULL),
+                    '[]'::json
                 ) as variants
             FROM products p
             LEFT JOIN product_variants pv ON p.id = pv.product_id
