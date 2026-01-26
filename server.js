@@ -55,7 +55,8 @@ app.get('/api/products', async (req, res) => {
                         'stock', pv.stock_quantity,
                         'low_stock_threshold', pv.low_stock_threshold,
                         'sku', pv.sku,
-                        'is_available', pv.is_available
+                        'is_available', pv.is_available,
+                        'image_url', pv.image_url
                     )
                 ) as variants
             FROM products p
@@ -85,7 +86,8 @@ app.get('/api/products', async (req, res) => {
                     available: variant.is_available && variant.stock > 0,
                     low_stock: variant.stock <= variant.low_stock_threshold,
                     variant_id: variant.variant_id,
-                    sku: variant.sku
+                    sku: variant.sku,
+                    image_url: variant.image_url
                 });
             });
             

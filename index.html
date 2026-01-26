@@ -789,7 +789,7 @@
                 </div>
                 <div class="form-group">
                     <label>Category *</label>
-                    <select id="editProductCategory">
+                    <select id="editProductCategory" onchange="toggleCustomCategory(this, 'editCustomCategory')">
                         <option value="">Select category...</option>
                         <option value="Airpods Case">AirPods Cases</option>
                         <option value="Chargers">Chargers</option>
@@ -811,7 +811,9 @@
                         <option value="Iphone 16 ProMax">iPhone 16 ProMax</option>
                         <option value="S23 Ultra">Samsung S23 Ultra</option>
                         <option value="S24 Ultra">Samsung S24 Ultra</option>
+                        <option value="__custom__">➕ Create New Category</option>
                     </select>
+                    <input type="text" id="editCustomCategory" placeholder="Enter new category name" style="display: none; margin-top: 10px;">
                 </div>
                 <div class="form-group">
                     <label>Base Price (JMD) *</label>
@@ -854,7 +856,7 @@
                 </div>
                 <div class="form-group">
                     <label>Category *</label>
-                    <select id="newProductCategory">
+                    <select id="newProductCategory" onchange="toggleCustomCategory(this, 'newCustomCategory')">
                         <option value="">Select category...</option>
                         <option value="Airpods Case">AirPods Cases</option>
                         <option value="Chargers">Chargers</option>
@@ -876,7 +878,9 @@
                         <option value="Iphone 16 ProMax">iPhone 16 ProMax</option>
                         <option value="S23 Ultra">Samsung S23 Ultra</option>
                         <option value="S24 Ultra">Samsung S24 Ultra</option>
+                        <option value="__custom__">➕ Create New Category</option>
                     </select>
+                    <input type="text" id="newCustomCategory" placeholder="Enter new category name" style="display: none; margin-top: 10px;">
                 </div>
                 <div class="form-group">
                     <label>Base Price (JMD) *</label>

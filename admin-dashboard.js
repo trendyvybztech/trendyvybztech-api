@@ -607,10 +607,19 @@ function addVariantRow() {
 
 async function createProduct() {
     const name = document.getElementById('newProductName').value.trim();
-    const category = document.getElementById('newProductCategory').value;
+    let category = document.getElementById('newProductCategory').value;
+    const customCategory = document.getElementById('newCustomCategory').value.trim();
     const base_price = parseFloat(document.getElementById('newProductPrice').value);
     const description = document.getElementById('newProductDescription').value.trim();
     const image_url = document.getElementById('newProductImageUrl').value.trim();
+    
+    // Use custom category if selected
+    if (category === '__custom__' && customCategory) {
+        category = customCategory;
+    } else if (category === '__custom__') {
+        showNotification('Please enter a custom category name', 'error');
+        return;
+    }
     
     // Validation
     if (!name || !category || !base_price) {
@@ -795,10 +804,19 @@ function addEditVariantRow() {
 async function saveProductEdits() {
     const productId = document.getElementById('editProductId').value;
     const name = document.getElementById('editProductName').value.trim();
-    const category = document.getElementById('editProductCategory').value;
+    let category = document.getElementById('editProductCategory').value;
+    const customCategory = document.getElementById('editCustomCategory').value.trim();
     const base_price = parseFloat(document.getElementById('editProductPrice').value);
     const description = document.getElementById('editProductDescription').value.trim();
     const image_url = document.getElementById('editProductImageUrl').value.trim();
+    
+    // Use custom category if selected
+    if (category === '__custom__' && customCategory) {
+        category = customCategory;
+    } else if (category === '__custom__') {
+        showNotification('Please enter a custom category name', 'error');
+        return;
+    }
     
     if (!name || !category || !base_price) {
         showNotification('Please fill in all required fields', 'error');
@@ -1084,5 +1102,17 @@ async function refundOrder(orderId) {
     } catch (error) {
         console.error('Error refunding order:', error);
         showNotification(error.message || 'Failed to refund order', 'error');
+    }
+}
+
+// Toggle custom category input
+function toggleCustomCategory(selectElement, inputId) {
+    const customInput = document.getElementById(inputId);
+    if (selectElement.value === '__custom__') {
+        customInput.style.display = 'block';
+        customInput.focus();
+    } else {
+        customInput.style.display = 'none';
+        customInput.value = '';
     }
 }
