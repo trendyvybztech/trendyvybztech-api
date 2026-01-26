@@ -1,3 +1,4 @@
+// Force deploy v2 - 2026-01-26
 // backend/server.js
 // Trendy VybzTech Inventory Management API
 // Connects to Neon PostgreSQL Database
