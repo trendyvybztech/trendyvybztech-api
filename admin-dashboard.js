@@ -308,7 +308,7 @@ async function loadInventory() {
             data.products.forEach(product => {
                 productMap.set(product.id, product);
                 
-                if (product.variants) {
+                if (product.variants && Object.keys(product.variants).length > 0) {
                     Object.entries(product.variants).forEach(([type, variantArray]) => {
                         if (Array.isArray(variantArray)) {
                             variantArray.forEach(variant => {
@@ -335,6 +335,23 @@ async function loadInventory() {
                             });
                         }
                     });
+                } else {
+                    // Product without variants
+                    rows.push(`
+                        <tr data-product-id="${product.id}">
+                            <td>${product.name}</td>
+                            <td>${product.category}</td>
+                            <td>No variants</td>
+                            <td>-</td>
+                            <td>JMD $${product.price.toFixed(2)}</td>
+                            <td><span class="badge badge-warning">No Variants</span></td>
+                            <td>
+                                <button class="btn-small btn-edit" onclick="openEditProduct(${product.id})">
+                                    ✏️ Edit
+                                </button>
+                            </td>
+                        </tr>
+                    `);
                 }
             });
             
