@@ -558,11 +558,18 @@ function showNotification(message, type = 'success') {
 // ==================== CREATE PRODUCT ====================
 
 function showCreateProductModal() {
-    document.getElementById('createProductModal').style.display = 'block';
+    const modal = document.getElementById('createProductModal');
+    if (!modal) {
+        console.error('Create product modal not found');
+        return;
+    }
+    modal.style.display = 'block';
 }
 
 function closeCreateProductModal() {
-    document.getElementById('createProductModal').style.display = 'none';
+    const modal = document.getElementById('createProductModal');
+    if (!modal) return;
+    modal.style.display = 'none';
     // Reset form
     document.getElementById('newProductName').value = '';
     document.getElementById('newProductCategory').value = '';
