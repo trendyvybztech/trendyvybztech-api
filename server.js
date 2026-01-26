@@ -337,6 +337,64 @@ app.post('/api/orders', async (req, res) => {
         
         await client.query('COMMIT');
         
+        // Track customer and award points (async, don't block order response)
+        setImmediate(async () => {
+            try {
+                const client2 = await pool.connect();
+                
+                try {
+                    // Find or create customer
+                    let customer = await client2.query(
+                        'SELECT id, total_points FROM customers WHERE phone = $1',
+                        [customer_phone]
+                    );
+                    
+                    let customerId;
+                    if (customer.rows.length === 0) {
+                        // Create new customer
+                        const newCustomer = await client2.query(`
+                            INSERT INTO customers (phone, name, email, total_points, total_spent, total_orders)
+                            VALUES ($1, $2, $3, 0, $4, 1)
+                            RETURNING id
+                        `, [customer_phone, customer_name, customer_email, total]);
+                        customerId = newCustomer.rows[0].id;
+                    } else {
+                        // Update existing customer
+                        customerId = customer.rows[0].id;
+                        await client2.query(`
+                            UPDATE customers 
+                            SET name = $1, email = $2, total_spent = total_spent + $3, total_orders = total_orders + 1, updated_at = NOW()
+                            WHERE id = $4
+                        `, [customer_name, customer_email, total, customerId]);
+                    }
+                    
+                    // Calculate points (1% of total)
+                    const pointsEarned = Math.floor(total / 100);
+                    
+                    if (pointsEarned > 0) {
+                        // Update customer points
+                        const updatedCustomer = await client2.query(`
+                            UPDATE customers 
+                            SET total_points = total_points + $1
+                            WHERE id = $2
+                            RETURNING total_points
+                        `, [pointsEarned, customerId]);
+                        
+                        // Log points transaction
+                        await client2.query(`
+                            INSERT INTO points_transactions 
+                            (customer_id, order_id, transaction_type, points_change, points_balance, order_total, notes)
+                            VALUES ($1, $2, 'earned', $3, $4, $5, 'Points earned from order')
+                        `, [customerId, order_id, pointsEarned, updatedCustomer.rows[0].total_points, total]);
+                    }
+                } finally {
+                    client2.release();
+                }
+            } catch (error) {
+                console.error('Error tracking customer/points:', error);
+            }
+        });
+        
         res.json({
             success: true,
             message: 'Order created successfully',
@@ -956,3 +1014,269 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
+// ============================================
+// CUSTOMERS & REWARDS ENDPOINTS
+// ============================================
+
+// Get or create customer by phone
+app.post('/api/customers/lookup', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        const { phone, name, email } = req.body;
+        
+        if (!phone) {
+            return res.status(400).json({ success: false, error: 'Phone number required' });
+        }
+        
+        // Check if customer exists
+        let customer = await client.query(
+            'SELECT * FROM customers WHERE phone = $1',
+            [phone]
+        );
+        
+        if (customer.rows.length === 0) {
+            // Create new customer
+            customer = await client.query(`
+                INSERT INTO customers (phone, name, email, total_points)
+                VALUES ($1, $2, $3, 0)
+                RETURNING *
+            `, [phone, name || null, email || null]);
+        } else if (name || email) {
+            // Update existing customer info if provided
+            customer = await client.query(`
+                UPDATE customers 
+                SET name = COALESCE($2, name), 
+                    email = COALESCE($3, email),
+                    updated_at = NOW()
+                WHERE phone = $1
+                RETURNING *
+            `, [phone, name, email]);
+        }
+        
+        res.json({ 
+            success: true, 
+            customer: customer.rows[0]
+        });
+        
+    } catch (error) {
+        console.error('Customer lookup error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Award points after order
+app.post('/api/customers/:customerId/award-points', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        const { customerId } = req.params;
+        const { order_id, order_total, points } = req.body;
+        
+        // Get current points
+        const customerResult = await client.query(
+            'SELECT total_points FROM customers WHERE id = $1',
+            [customerId]
+        );
+        
+        if (customerResult.rows.length === 0) {
+            throw new Error('Customer not found');
+        }
+        
+        const currentPoints = customerResult.rows[0].total_points;
+        const newPoints = currentPoints + points;
+        
+        // Update customer points and stats
+        await client.query(`
+            UPDATE customers 
+            SET total_points = $1,
+                total_spent = total_spent + $2,
+                total_orders = total_orders + 1,
+                updated_at = NOW()
+            WHERE id = $3
+        `, [newPoints, order_total, customerId]);
+        
+        // Log transaction
+        await client.query(`
+            INSERT INTO points_transactions 
+            (customer_id, order_id, transaction_type, points_change, points_balance, order_total, notes)
+            VALUES ($1, $2, 'earned', $3, $4, $5, '1% cashback on order')
+        `, [customerId, order_id, points, newPoints, order_total]);
+        
+        await client.query('COMMIT');
+        
+        res.json({ 
+            success: true, 
+            points_earned: points,
+            new_balance: newPoints
+        });
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Award points error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Redeem points
+app.post('/api/customers/:customerId/redeem-points', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        const { customerId } = req.params;
+        const { order_id, points_to_redeem } = req.body;
+        
+        // Get current points
+        const customerResult = await client.query(
+            'SELECT total_points FROM customers WHERE id = $1',
+            [customerId]
+        );
+        
+        if (customerResult.rows.length === 0) {
+            throw new Error('Customer not found');
+        }
+        
+        const currentPoints = customerResult.rows[0].total_points;
+        
+        if (currentPoints < points_to_redeem) {
+            throw new Error('Insufficient points');
+        }
+        
+        const newPoints = currentPoints - points_to_redeem;
+        const discount = points_to_redeem; // 1 point = 1 JMD
+        
+        // Update customer points
+        await client.query(`
+            UPDATE customers 
+            SET total_points = $1,
+                updated_at = NOW()
+            WHERE id = $2
+        `, [newPoints, customerId]);
+        
+        // Log transaction
+        await client.query(`
+            INSERT INTO points_transactions 
+            (customer_id, order_id, transaction_type, points_change, points_balance, notes)
+            VALUES ($1, $2, 'redeemed', $3, $4, 'Redeemed for JMD discount')
+        `, [customerId, order_id, -points_to_redeem, newPoints]);
+        
+        await client.query('COMMIT');
+        
+        res.json({ 
+            success: true, 
+            points_redeemed: points_to_redeem,
+            discount_amount: discount,
+            new_balance: newPoints
+        });
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Redeem points error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Get all customers (admin)
+app.get('/admin/customers', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 
+                id, phone, name, email, 
+                total_points, total_spent, total_orders,
+                created_at, updated_at
+            FROM customers
+            ORDER BY total_spent DESC
+        `);
+        
+        res.json({ success: true, customers: result.rows });
+    } catch (error) {
+        console.error('Get customers error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Adjust customer points (admin)
+app.post('/admin/customers/:customerId/adjust-points', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        const { customerId } = req.params;
+        const { points_change, notes } = req.body;
+        
+        // Get current points
+        const customerResult = await client.query(
+            'SELECT total_points FROM customers WHERE id = $1',
+            [customerId]
+        );
+        
+        if (customerResult.rows.length === 0) {
+            throw new Error('Customer not found');
+        }
+        
+        const currentPoints = customerResult.rows[0].total_points;
+        const newPoints = currentPoints + points_change;
+        
+        if (newPoints < 0) {
+            throw new Error('Points cannot be negative');
+        }
+        
+        // Update customer points
+        await client.query(`
+            UPDATE customers 
+            SET total_points = $1,
+                updated_at = NOW()
+            WHERE id = $2
+        `, [newPoints, customerId]);
+        
+        // Log transaction
+        await client.query(`
+            INSERT INTO points_transactions 
+            (customer_id, transaction_type, points_change, points_balance, notes, created_by)
+            VALUES ($1, 'adjustment', $2, $3, $4, 'admin')
+        `, [customerId, points_change, newPoints, notes || 'Manual adjustment']);
+        
+        await client.query('COMMIT');
+        
+        res.json({ 
+            success: true, 
+            new_balance: newPoints
+        });
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Adjust points error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Get sales analytics
+app.get('/admin/sales/analytics', async (req, res) => {
+    try {
+        const analytics = await pool.query('SELECT * FROM sales_analytics');
+        const byDate = await pool.query('SELECT * FROM sales_by_date LIMIT 30');
+        
+        res.json({ 
+            success: true, 
+            analytics: analytics.rows[0],
+            by_date: byDate.rows
+        });
+    } catch (error) {
+        console.error('Sales analytics error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
