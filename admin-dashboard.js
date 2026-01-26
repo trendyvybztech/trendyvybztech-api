@@ -222,6 +222,12 @@ function showPage(pageName) {
         case 'orders':
             loadOrders();
             break;
+        case 'sales':
+            loadSalesAnalytics();
+            break;
+        case 'customers':
+            loadCustomers();
+            break;
         case 'lowstock':
             loadLowStock();
             break;
@@ -1131,5 +1137,136 @@ function toggleCustomCategory(selectElement, inputId) {
     } else {
         customInput.style.display = 'none';
         customInput.value = '';
+    }
+}
+
+// ============================================
+// SALES ANALYTICS
+// ============================================
+
+async function loadSalesAnalytics() {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/sales/analytics`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const stats = data.analytics;
+            
+            document.getElementById('stat-revenue').textContent = `JMD $${parseFloat(stats.total_revenue || 0).toLocaleString()}`;
+            document.getElementById('stat-refunds').textContent = `JMD $${parseFloat(stats.total_refunds || 0).toLocaleString()}`;
+            document.getElementById('stat-net').textContent = `JMD $${parseFloat(stats.net_revenue || 0).toLocaleString()}`;
+            document.getElementById('stat-avg').textContent = `JMD $${parseFloat(stats.avg_order_value || 0).toLocaleString()}`;
+            
+            // Load sales by date
+            const tbody = document.getElementById('sales-table');
+            if (data.by_date.length > 0) {
+                const rows = data.by_date.map(row => `
+                    <tr>
+                        <td>${new Date(row.sale_date).toLocaleDateString()}</td>
+                        <td>${row.orders_count}</td>
+                        <td>JMD $${parseFloat(row.revenue).toLocaleString()}</td>
+                        <td>JMD $${parseFloat(row.avg_order || 0).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+                tbody.innerHTML = rows;
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No sales data yet</td></tr>';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading sales analytics:', error);
+    }
+}
+
+// ============================================
+// CUSTOMERS & REWARDS
+// ============================================
+
+async function loadCustomers() {
+    const tbody = document.getElementById('customers-table');
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Loading...</td></tr>';
+    
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/customers`);
+        const data = await response.json();
+        
+        if (data.success && data.customers.length > 0) {
+            window.customersData = data.customers;
+            
+            const rows = data.customers.map(customer => `
+                <tr>
+                    <td>${customer.name || 'N/A'}</td>
+                    <td>${customer.phone}</td>
+                    <td>${customer.email || 'N/A'}</td>
+                    <td><strong style="color: var(--primary);">${customer.total_points}</strong></td>
+                    <td>JMD $${parseFloat(customer.total_spent).toLocaleString()}</td>
+                    <td>${customer.total_orders}</td>
+                    <td>
+                        <button class="btn-small btn-edit" onclick="adjustCustomerPoints(${customer.id}, '${customer.name || customer.phone}', ${customer.total_points})">
+                            Adjust Points
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+            
+            tbody.innerHTML = rows;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No customers yet</td></tr>';
+        }
+    } catch (error) {
+        console.error('Error loading customers:', error);
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--danger);">Error loading customers</td></tr>';
+    }
+}
+
+function searchCustomers() {
+    const searchTerm = document.getElementById('customersSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('#customers-table tr');
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
+}
+
+function adjustCustomerPoints(customerId, customerName, currentPoints) {
+    const change = prompt(`Adjust points for ${customerName}\nCurrent balance: ${currentPoints} points\n\nEnter amount to add (positive) or subtract (negative):`);
+    
+    if (change === null) return;
+    
+    const pointsChange = parseInt(change);
+    
+    if (isNaN(pointsChange) || pointsChange === 0) {
+        alert('Please enter a valid number');
+        return;
+    }
+    
+    const notes = prompt('Enter reason for adjustment (optional):');
+    
+    adjustPoints(customerId, pointsChange, notes || 'Manual adjustment');
+}
+
+async function adjustPoints(customerId, pointsChange, notes) {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/customers/${customerId}/adjust-points`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ points_change: pointsChange, notes })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(`Points adjusted successfully. New balance: ${data.new_balance}`, 'success');
+            loadCustomers();
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (error) {
+        console.error('Error adjusting points:', error);
+        showNotification(error.message || 'Failed to adjust points', 'error');
     }
 }
