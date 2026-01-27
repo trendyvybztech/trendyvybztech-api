@@ -58,7 +58,8 @@ app.get('/api/products', async (req, res) => {
                             'low_stock_threshold', pv.low_stock_threshold,
                             'sku', pv.sku,
                             'is_available', pv.is_available,
-                            'image_url', COALESCE(pv.image_url, p.image_url, '')
+                            'image_url', COALESCE(pv.image_url, p.image_url, ''),
+                            'variant_price', pv.variant_price
                         )
                     ) FILTER (WHERE pv.id IS NOT NULL),
                     '[]'::json
@@ -91,7 +92,8 @@ app.get('/api/products', async (req, res) => {
                     low_stock: variant.stock <= variant.low_stock_threshold,
                     variant_id: variant.variant_id,
                     sku: variant.sku,
-                    image_url: variant.image_url
+                    image_url: variant.image_url,
+                    variant_price: variant.variant_price
                 });
             });
             
@@ -738,7 +740,7 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         await client.query('BEGIN');
         
         const { productId } = req.params;
-        const { variant_type, variant_value, stock_quantity, sku, price_modifier, image_url } = req.body;
+        const { variant_type, variant_value, stock_quantity, sku, price_modifier, image_url, variant_price } = req.body;
         
         // Validation
         if (!variant_type || !variant_value) {
@@ -764,9 +766,9 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
         // Insert variant
         const result = await client.query(`
             INSERT INTO product_variants 
-            (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url, created_at
+            (product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url, variant_price)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id, product_id, variant_type, variant_value, stock_quantity, sku, price_modifier, image_url, variant_price, created_at
         `, [
             productId, 
             variant_type, 
@@ -774,7 +776,8 @@ app.post('/admin/products/:productId/variants', async (req, res) => {
             stock_quantity || 0, 
             sku || null, 
             price_modifier || 0,
-            image_url || null
+            image_url || null,
+            variant_price || null
         ]);
         
         // Log initial stock
@@ -904,7 +907,7 @@ app.put('/admin/variants/:variantId', async (req, res) => {
         await client.query('BEGIN');
         
         const { variantId } = req.params;
-        const { variant_value, stock_quantity, sku, image_url } = req.body;
+        const { variant_value, stock_quantity, sku, image_url, variant_price } = req.body;
         
         if (!variant_value) {
             return res.status(400).json({ 
@@ -932,10 +935,10 @@ app.put('/admin/variants/:variantId', async (req, res) => {
         // Update variant
         const result = await client.query(`
             UPDATE product_variants 
-            SET variant_value = $1, stock_quantity = $2, sku = $3, image_url = $4, updated_at = NOW()
-            WHERE id = $5
-            RETURNING id, variant_type, variant_value, stock_quantity, sku, image_url, updated_at
-        `, [variant_value, stock_quantity, sku, image_url, variantId]);
+            SET variant_value = $1, stock_quantity = $2, sku = $3, image_url = $4, variant_price = $5, updated_at = NOW()
+            WHERE id = $6
+            RETURNING id, variant_type, variant_value, stock_quantity, sku, image_url, variant_price, updated_at
+        `, [variant_value, stock_quantity, sku, image_url, variant_price, variantId]);
         
         // Log stock change if any
         if (stockChange !== 0) {

@@ -790,6 +790,7 @@ function openEditProduct(productId) {
                         <input type="text" class="edit-variant-type" value="${type}" style="flex: 0.8;" readonly>
                         <input type="text" class="edit-variant-value" value="${variant.value}" style="flex: 0.8;">
                         <input type="number" class="edit-variant-stock" value="${variant.stock}" min="0" style="width: 70px;">
+                        <input type="number" class="edit-variant-price" value="${variant.variant_price || ''}" min="0" step="0.01" style="width: 100px;" placeholder="Price">
                         <input type="text" class="edit-variant-sku" value="${variant.sku || ''}" style="width: 100px;" placeholder="SKU">
                         <input type="text" class="edit-variant-image" value="${variant.image_url || ''}" style="flex: 1;" placeholder="Image URL">
                         <button onclick="deleteVariant(${variant.variant_id}, this)" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Delete</button>
@@ -817,6 +818,7 @@ function addEditVariantRow() {
         <input type="text" class="edit-variant-type" placeholder="Variant Type (e.g., Colour)" style="flex: 0.8;">
         <input type="text" class="edit-variant-value" placeholder="Variant Value" style="flex: 0.8;">
         <input type="number" class="edit-variant-stock" placeholder="Stock" min="0" style="width: 70px;">
+        <input type="number" class="edit-variant-price" placeholder="Price" min="0" step="0.01" style="width: 100px;">
         <input type="text" class="edit-variant-sku" placeholder="SKU" style="width: 100px;">
         <input type="text" class="edit-variant-image" placeholder="Image URL" style="flex: 1;">
         <button onclick="this.parentElement.remove()" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Remove</button>
@@ -879,6 +881,7 @@ async function saveProductEdits() {
             const variantType = row.querySelector('.edit-variant-type').value.trim();
             const variantValue = row.querySelector('.edit-variant-value').value.trim();
             const stock = parseInt(row.querySelector('.edit-variant-stock').value) || 0;
+            const variantPrice = parseFloat(row.querySelector('.edit-variant-price').value) || null;
             const sku = row.querySelector('.edit-variant-sku').value.trim();
             const imageUrl = row.querySelector('.edit-variant-image').value.trim();
             
@@ -897,7 +900,8 @@ async function saveProductEdits() {
                             stock_quantity: stock,
                             sku: sku || null,
                             price_modifier: 0,
-                            image_url: imageUrl || null
+                            image_url: imageUrl || null,
+                            variant_price: variantPrice
                         })
                     });
                 } else {
@@ -912,7 +916,8 @@ async function saveProductEdits() {
                             variant_value: variantValue,
                             stock_quantity: stock,
                             sku: sku || null,
-                            image_url: imageUrl || null
+                            image_url: imageUrl || null,
+                            variant_price: variantPrice
                         })
                     });
                 }
