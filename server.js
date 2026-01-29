@@ -51,6 +51,8 @@ app.get('/api/products', async (req, res) => {
                 p.base_price as price,
                 p.image_url as image,
                 p.description,
+                mc.display_order as mc_order,
+                sc.display_order as sc_order,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -73,52 +75,20 @@ app.get('/api/products', async (req, res) => {
             LEFT JOIN main_categories mc ON sc.main_category_id = mc.id
             WHERE p.is_active = true
             GROUP BY 
-                p.id, 
-                p.name, 
-                p.category, 
-                p.sub_category_id, 
-                sc.name, 
-                mc.name, 
-                p.base_price, 
-                p.image_url, 
-                p.description,
-                mc.display_order, 
-                sc.display_order
+                p.id, p.name, p.category, p.sub_category_id, 
+                sc.name, mc.name, p.base_price, p.image_url, 
+                p.description, mc.display_order, sc.display_order
             ORDER BY mc.display_order, sc.display_order, p.name;
         `;
-        
-        const result = await pool.query(query);
-        res.json({ success: true, products: result.rows });
-    } catch (error) {
-        console.error('Get products error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-        `;
-        
-        // Don't forget to actually execute the query (adding this in case it was below your snippet)
-        const result = await pool.query(query);
-        res.json({ success: true, products: result.rows });
-    } catch (error) {
-        console.error('Get products error:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
         
         const result = await pool.query(query);
         
         // Transform data to match frontend format
         const products = result.rows.map(product => {
             const variants = {};
-            const stockInfo = {};
-            
             product.variants.forEach(variant => {
                 if (!variant.type) return;
-                
-                if (!variants[variant.type]) {
-                    variants[variant.type] = [];
-                }
-                
+                if (!variants[variant.type]) variants[variant.type] = [];
                 variants[variant.type].push({
                     value: variant.value,
                     stock: variant.stock,
@@ -152,14 +122,14 @@ app.get('/api/products', async (req, res) => {
     }
 });
 
-// Get single product by ID
+// Get single product by ID - FIXED p.* and GROUP BY
 app.get('/api/products/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        
         const query = `
             SELECT 
-                p.*,
+                p.id, p.name, p.category, p.sub_category_id, p.base_price, 
+                p.image_url, p.description, p.is_active,
                 json_agg(
                     json_build_object(
                         'variant_id', pv.id,
@@ -173,65 +143,16 @@ app.get('/api/products/:id', async (req, res) => {
             FROM products p
             LEFT JOIN product_variants pv ON p.id = pv.product_id
             WHERE p.id = $1 AND p.is_active = true
-            GROUP BY p.id;
+            GROUP BY p.id, p.name, p.category, p.sub_category_id, p.base_price, p.image_url, p.description, p.is_active;
         `;
         
         const result = await pool.query(query, [id]);
-        
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Product not found' });
         }
-        
         res.json({ success: true, product: result.rows[0] });
     } catch (error) {
         console.error('Error fetching product:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-// Check stock for specific variant
-app.post('/api/products/check-stock', async (req, res) => {
-    try {
-        const { product_id, variant_type, variant_value } = req.body;
-        
-        const query = `
-            SELECT 
-                pv.id as variant_id,
-                pv.stock_quantity,
-                pv.low_stock_threshold,
-                pv.is_available,
-                pv.sku
-            FROM product_variants pv
-            WHERE pv.product_id = $1 
-                AND pv.variant_type = $2 
-                AND pv.variant_value = $3;
-        `;
-        
-        const result = await pool.query(query, [product_id, variant_type, variant_value]);
-        
-        if (result.rows.length === 0) {
-            return res.json({ 
-                success: true, 
-                in_stock: false,
-                stock_quantity: 0,
-                message: 'Variant not found'
-            });
-        }
-        
-        const variant = result.rows[0];
-        const in_stock = variant.is_available && variant.stock_quantity > 0;
-        const low_stock = variant.stock_quantity <= variant.low_stock_threshold;
-        
-        res.json({
-            success: true,
-            in_stock,
-            low_stock,
-            stock_quantity: variant.stock_quantity,
-            variant_id: variant.variant_id,
-            sku: variant.sku
-        });
-    } catch (error) {
-        console.error('Error checking stock:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
