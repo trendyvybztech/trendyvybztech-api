@@ -1413,6 +1413,259 @@ app.delete('/admin/customers/:customerId', async (req, res) => {
     }
 });
 
+// ============================================
+// CATEGORY ENDPOINTS
+// ============================================
+
+// Get all categories
+app.get('/api/categories', async (req, res) => {
+    try {
+        const main = await pool.query(`
+            SELECT id, name, display_order, is_active 
+            FROM main_categories 
+            WHERE is_active = true 
+            ORDER BY display_order, name
+        `);
+        
+        const sub = await pool.query(`
+            SELECT sc.id, sc.main_category_id, sc.name, sc.display_order, sc.is_active
+            FROM sub_categories sc
+            WHERE sc.is_active = true
+            ORDER BY sc.display_order, sc.name
+        `);
+        
+        res.json({ 
+            success: true, 
+            main_categories: main.rows,
+            sub_categories: sub.rows
+        });
+    } catch (error) {
+        console.error('Get categories error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get all categories (admin - includes inactive)
+app.get('/admin/categories', async (req, res) => {
+    try {
+        const main = await pool.query(`
+            SELECT id, name, display_order, is_active, created_at 
+            FROM main_categories 
+            ORDER BY display_order, name
+        `);
+        
+        const sub = await pool.query(`
+            SELECT sc.id, sc.main_category_id, sc.name, sc.display_order, sc.is_active, sc.created_at,
+                   mc.name as main_category_name
+            FROM sub_categories sc
+            JOIN main_categories mc ON sc.main_category_id = mc.id
+            ORDER BY mc.display_order, sc.display_order, sc.name
+        `);
+        
+        res.json({ 
+            success: true, 
+            main_categories: main.rows,
+            sub_categories: sub.rows
+        });
+    } catch (error) {
+        console.error('Get categories error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Create main category
+app.post('/admin/categories/main', async (req, res) => {
+    try {
+        const { name, display_order } = req.body;
+        
+        if (!name) {
+            return res.status(400).json({ success: false, error: 'Category name is required' });
+        }
+        
+        const result = await pool.query(`
+            INSERT INTO main_categories (name, display_order)
+            VALUES ($1, $2)
+            RETURNING *
+        `, [name.trim(), display_order || 0]);
+        
+        res.json({ 
+            success: true, 
+            category: result.rows[0],
+            message: 'Main category created'
+        });
+    } catch (error) {
+        if (error.code === '23505') {
+            res.status(400).json({ success: false, error: 'Category already exists' });
+        } else {
+            console.error('Create main category error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+});
+
+// Update main category
+app.put('/admin/categories/main/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, display_order, is_active } = req.body;
+        
+        const result = await pool.query(`
+            UPDATE main_categories
+            SET name = COALESCE($1, name),
+                display_order = COALESCE($2, display_order),
+                is_active = COALESCE($3, is_active)
+            WHERE id = $4
+            RETURNING *
+        `, [name?.trim(), display_order, is_active, id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Category not found' });
+        }
+        
+        res.json({ 
+            success: true, 
+            category: result.rows[0],
+            message: 'Main category updated'
+        });
+    } catch (error) {
+        console.error('Update main category error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete main category
+app.delete('/admin/categories/main/:id', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const { id } = req.params;
+        
+        // Check for products using sub-categories
+        const check = await client.query(`
+            SELECT COUNT(*) as count
+            FROM products p
+            JOIN sub_categories sc ON p.sub_category_id = sc.id
+            WHERE sc.main_category_id = $1
+        `, [id]);
+        
+        if (parseInt(check.rows[0].count) > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Cannot delete category with products. Remove products first.'
+            });
+        }
+        
+        await client.query('DELETE FROM main_categories WHERE id = $1', [id]);
+        await client.query('COMMIT');
+        
+        res.json({ success: true, message: 'Main category deleted' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Delete main category error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Create sub category
+app.post('/admin/categories/sub', async (req, res) => {
+    try {
+        const { main_category_id, name, display_order } = req.body;
+        
+        if (!name || !main_category_id) {
+            return res.status(400).json({ success: false, error: 'Name and main category are required' });
+        }
+        
+        const result = await pool.query(`
+            INSERT INTO sub_categories (main_category_id, name, display_order)
+            VALUES ($1, $2, $3)
+            RETURNING *
+        `, [main_category_id, name.trim(), display_order || 0]);
+        
+        res.json({ 
+            success: true, 
+            category: result.rows[0],
+            message: 'Sub category created'
+        });
+    } catch (error) {
+        if (error.code === '23505') {
+            res.status(400).json({ success: false, error: 'Sub category already exists in this main category' });
+        } else {
+            console.error('Create sub category error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+});
+
+// Update sub category
+app.put('/admin/categories/sub/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, main_category_id, display_order, is_active } = req.body;
+        
+        const result = await pool.query(`
+            UPDATE sub_categories
+            SET name = COALESCE($1, name),
+                main_category_id = COALESCE($2, main_category_id),
+                display_order = COALESCE($3, display_order),
+                is_active = COALESCE($4, is_active)
+            WHERE id = $5
+            RETURNING *
+        `, [name?.trim(), main_category_id, display_order, is_active, id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Sub category not found' });
+        }
+        
+        res.json({ 
+            success: true, 
+            category: result.rows[0],
+            message: 'Sub category updated'
+        });
+    } catch (error) {
+        console.error('Update sub category error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete sub category
+app.delete('/admin/categories/sub/:id', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        const { id } = req.params;
+        
+        // Check for products
+        const check = await client.query(
+            'SELECT COUNT(*) as count FROM products WHERE sub_category_id = $1',
+            [id]
+        );
+        
+        if (parseInt(check.rows[0].count) > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Cannot delete category with products. Remove products first.'
+            });
+        }
+        
+        await client.query('DELETE FROM sub_categories WHERE id = $1', [id]);
+        await client.query('COMMIT');
+        
+        res.json({ success: true, message: 'Sub category deleted' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Delete sub category error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Get sales analytics
 app.get('/admin/sales/analytics', async (req, res) => {
     try {
