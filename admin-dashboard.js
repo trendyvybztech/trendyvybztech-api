@@ -589,7 +589,46 @@ function showCreateProductModal() {
         console.error('Create product modal not found');
         return;
     }
+    
+    // Populate sub-categories
+    populateSubCategoryDropdowns();
+    
     modal.style.display = 'block';
+}
+
+async function populateSubCategoryDropdowns() {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/categories`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const mainCategories = data.main_categories;
+            const subCategories = data.sub_categories;
+            
+            // Build grouped options
+            let options = '<option value="">Select category...</option>';
+            
+            mainCategories.forEach(main => {
+                const subs = subCategories.filter(s => s.main_category_id === main.id);
+                if (subs.length > 0) {
+                    options += `<optgroup label="${main.name}">`;
+                    subs.forEach(sub => {
+                        options += `<option value="${sub.id}">${sub.name}</option>`;
+                    });
+                    options += '</optgroup>';
+                }
+            });
+            
+            // Update both dropdowns
+            const newSelect = document.getElementById('newProductSubCategory');
+            const editSelect = document.getElementById('editProductSubCategory');
+            
+            if (newSelect) newSelect.innerHTML = options;
+            if (editSelect) editSelect.innerHTML = options;
+        }
+    } catch (error) {
+        console.error('Failed to load categories:', error);
+    }
 }
 
 function closeCreateProductModal() {
@@ -598,7 +637,7 @@ function closeCreateProductModal() {
     modal.style.display = 'none';
     // Reset form
     document.getElementById('newProductName').value = '';
-    document.getElementById('newProductCategory').value = '';
+    document.getElementById('newProductSubCategory').value = '';
     document.getElementById('newProductPrice').value = '';
     document.getElementById('newProductDescription').value = '';
     document.getElementById('newProductImageUrl').value = '';
@@ -633,22 +672,13 @@ function addVariantRow() {
 
 async function createProduct() {
     const name = document.getElementById('newProductName').value.trim();
-    let category = document.getElementById('newProductCategory').value;
-    const customCategory = document.getElementById('newCustomCategory').value.trim();
+    const sub_category_id = parseInt(document.getElementById('newProductSubCategory').value);
     const base_price = parseFloat(document.getElementById('newProductPrice').value);
     const description = document.getElementById('newProductDescription').value.trim();
     const image_url = document.getElementById('newProductImageUrl').value.trim();
     
-    // Use custom category if selected
-    if (category === '__custom__' && customCategory) {
-        category = customCategory;
-    } else if (category === '__custom__') {
-        showNotification('Please enter a custom category name', 'error');
-        return;
-    }
-    
     // Validation
-    if (!name || !category || !base_price) {
+    if (!name || !sub_category_id || !base_price) {
         showNotification('Please fill in all required fields (Name, Category, Price)', 'error');
         return;
     }
@@ -661,6 +691,10 @@ async function createProduct() {
     showLoading(true);
     
     try {
+        // Get sub-category name for legacy category field
+        const subCatSelect = document.getElementById('newProductSubCategory');
+        const subCatName = subCatSelect.options[subCatSelect.selectedIndex].text;
+        
         // Create product
         const productResponse = await fetch(`${ADMIN_API_URL}/products`, {
             method: 'POST',
@@ -670,7 +704,8 @@ async function createProduct() {
             },
             body: JSON.stringify({
                 name,
-                category,
+                category: subCatName,
+                sub_category_id,
                 base_price,
                 image_url: image_url || null,
                 description: description || null
@@ -757,54 +792,60 @@ function openEditProduct(productId) {
         return;
     }
     
-    // Populate form with null checks
-    const idField = document.getElementById('editProductId');
-    const nameField = document.getElementById('editProductName');
-    const categoryField = document.getElementById('editProductCategory');
-    const priceField = document.getElementById('editProductPrice');
-    const descField = document.getElementById('editProductDescription');
-    const imageField = document.getElementById('editProductImageUrl');
+    // Populate categories first
+    populateSubCategoryDropdowns();
     
-    if (idField) idField.value = product.id;
-    if (nameField) nameField.value = product.name;
-    if (categoryField) categoryField.value = product.category;
-    if (priceField) priceField.value = product.price;
-    if (descField) descField.value = product.description || '';
-    if (imageField) imageField.value = product.image || '';
-    
-    // Load variants
-    const container = document.getElementById('editVariantsContainer');
-    if (!container) {
-        console.error('Edit variants container not found');
-        return;
-    }
-    
-    container.innerHTML = '';
-    
-    if (product.variants) {
-        Object.entries(product.variants).forEach(([type, variantArray]) => {
-            if (Array.isArray(variantArray)) {
-                variantArray.forEach(variant => {
-                    const row = document.createElement('div');
-                    row.className = 'edit-variant-row';
-                    row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;';
-                    row.innerHTML = `
-                        <input type="hidden" class="edit-variant-id" value="${variant.variant_id}">
-                        <input type="text" class="edit-variant-type" value="${type}" style="flex: 0.8;" readonly>
-                        <input type="text" class="edit-variant-value" value="${variant.value}" style="flex: 0.8;">
-                        <input type="number" class="edit-variant-stock" value="${variant.stock}" min="0" style="width: 70px;">
-                        <input type="number" class="edit-variant-price" value="${variant.variant_price || ''}" min="0" step="0.01" style="width: 100px;" placeholder="Price">
-                        <input type="text" class="edit-variant-sku" value="${variant.sku || ''}" style="width: 100px;" placeholder="SKU">
-                        <input type="text" class="edit-variant-image" value="${variant.image_url || ''}" style="flex: 1;" placeholder="Image URL">
-                        <button onclick="deleteVariant(${variant.variant_id}, this)" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Delete</button>
-                    `;
-                    container.appendChild(row);
-                });
-            }
-        });
-    }
-    
-    modal.style.display = 'block';
+    // Wait briefly for categories to populate
+    setTimeout(() => {
+        // Populate form with null checks
+        const idField = document.getElementById('editProductId');
+        const nameField = document.getElementById('editProductName');
+        const subCategoryField = document.getElementById('editProductSubCategory');
+        const priceField = document.getElementById('editProductPrice');
+        const descField = document.getElementById('editProductDescription');
+        const imageField = document.getElementById('editProductImageUrl');
+        
+        if (idField) idField.value = product.id;
+        if (nameField) nameField.value = product.name;
+        if (subCategoryField && product.sub_category_id) subCategoryField.value = product.sub_category_id;
+        if (priceField) priceField.value = product.price;
+        if (descField) descField.value = product.description || '';
+        if (imageField) imageField.value = product.image || '';
+        
+        // Load variants
+        const container = document.getElementById('editVariantsContainer');
+        if (!container) {
+            console.error('Edit variants container not found');
+            return;
+        }
+        
+        container.innerHTML = '';
+        
+        if (product.variants) {
+            Object.entries(product.variants).forEach(([type, variantArray]) => {
+                if (Array.isArray(variantArray)) {
+                    variantArray.forEach(variant => {
+                        const row = document.createElement('div');
+                        row.className = 'edit-variant-row';
+                        row.style.cssText = 'display: flex; gap: 10px; margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;';
+                        row.innerHTML = `
+                            <input type="hidden" class="edit-variant-id" value="${variant.variant_id}">
+                            <input type="text" class="edit-variant-type" value="${type}" style="flex: 0.8;" readonly>
+                            <input type="text" class="edit-variant-value" value="${variant.value}" style="flex: 0.8;">
+                            <input type="number" class="edit-variant-stock" value="${variant.stock}" min="0" style="width: 70px;">
+                            <input type="number" class="edit-variant-price" value="${variant.variant_price || ''}" min="0" step="0.01" style="width: 100px;" placeholder="Price">
+                            <input type="text" class="edit-variant-sku" value="${variant.sku || ''}" style="width: 100px;" placeholder="SKU">
+                            <input type="text" class="edit-variant-image" value="${variant.image_url || ''}" style="flex: 1;" placeholder="Image URL">
+                            <button onclick="deleteVariant(${variant.variant_id}, this)" style="padding: 8px 12px; background: var(--danger); color: white; border: none; border-radius: 5px; cursor: pointer;">Delete</button>
+                        `;
+                        container.appendChild(row);
+                    });
+                }
+            });
+        }
+        
+        modal.style.display = 'block';
+    }, 100);
 }
 
 function closeEditProductModal() {
@@ -832,21 +873,12 @@ function addEditVariantRow() {
 async function saveProductEdits() {
     const productId = document.getElementById('editProductId').value;
     const name = document.getElementById('editProductName').value.trim();
-    let category = document.getElementById('editProductCategory').value;
-    const customCategory = document.getElementById('editCustomCategory').value.trim();
+    const sub_category_id = parseInt(document.getElementById('editProductSubCategory').value);
     const base_price = parseFloat(document.getElementById('editProductPrice').value);
     const description = document.getElementById('editProductDescription').value.trim();
     const image_url = document.getElementById('editProductImageUrl').value.trim();
     
-    // Use custom category if selected
-    if (category === '__custom__' && customCategory) {
-        category = customCategory;
-    } else if (category === '__custom__') {
-        showNotification('Please enter a custom category name', 'error');
-        return;
-    }
-    
-    if (!name || !category || !base_price) {
+    if (!name || !sub_category_id || !base_price) {
         showNotification('Please fill in all required fields', 'error');
         return;
     }
@@ -854,6 +886,10 @@ async function saveProductEdits() {
     showLoading(true);
     
     try {
+        // Get sub-category name for legacy category field
+        const subCatSelect = document.getElementById('editProductSubCategory');
+        const subCatName = subCatSelect.options[subCatSelect.selectedIndex].text;
+        
         // Update product
         const productResponse = await fetch(`${ADMIN_API_URL}/products/${productId}`, {
             method: 'PUT',
@@ -863,7 +899,8 @@ async function saveProductEdits() {
             },
             body: JSON.stringify({
                 name,
-                category,
+                category: subCatName,
+                sub_category_id,
                 base_price,
                 image_url: image_url || null,
                 description: description || null

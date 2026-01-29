@@ -45,6 +45,9 @@ app.get('/api/products', async (req, res) => {
                 p.id,
                 p.name,
                 p.category,
+                p.sub_category_id,
+                sc.name as sub_category_name,
+                mc.name as main_category_name,
                 p.base_price as price,
                 p.image_url as image,
                 p.description,
@@ -66,9 +69,11 @@ app.get('/api/products', async (req, res) => {
                 ) as variants
             FROM products p
             LEFT JOIN product_variants pv ON p.id = pv.product_id
+            LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+            LEFT JOIN main_categories mc ON sc.main_category_id = mc.id
             WHERE p.is_active = true
-            GROUP BY p.id
-            ORDER BY p.category, p.name;
+            GROUP BY p.id, sc.name, mc.name
+            ORDER BY mc.display_order, sc.display_order, p.name;
         `;
         
         const result = await pool.query(query);
@@ -100,7 +105,10 @@ app.get('/api/products', async (req, res) => {
             return {
                 id: product.id,
                 name: product.name,
-                category: product.category,
+                category: product.sub_category_name || product.category,
+                main_category: product.main_category_name,
+                sub_category: product.sub_category_name,
+                sub_category_id: product.sub_category_id,
                 price: parseFloat(product.price),
                 image: product.image,
                 description: product.description,
@@ -708,22 +716,22 @@ app.post('/admin/products', async (req, res) => {
     const client = await pool.connect();
     
     try {
-        const { name, category, base_price, image_url, description } = req.body;
+        const { name, category, sub_category_id, base_price, image_url, description } = req.body;
         
         // Validation
-        if (!name || !category || !base_price) {
+        if (!name || !base_price) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Name, category, and base_price are required' 
+                error: 'Name and base_price are required' 
             });
         }
         
-        // Insert product
+        // Insert product with sub_category_id
         const result = await client.query(`
-            INSERT INTO products (name, category, base_price, image_url, description)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, name, category, base_price, image_url, description, created_at
-        `, [name, category, base_price, image_url || null, description || null]);
+            INSERT INTO products (name, category, sub_category_id, base_price, image_url, description)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, name, category, sub_category_id, base_price, image_url, description, created_at
+        `, [name, category || '', sub_category_id || null, base_price, image_url || null, description || null]);
         
         res.json({ 
             success: true, 
@@ -869,21 +877,21 @@ app.put('/admin/products/:productId', async (req, res) => {
     
     try {
         const { productId } = req.params;
-        const { name, category, base_price, image_url, description } = req.body;
+        const { name, category, sub_category_id, base_price, image_url, description } = req.body;
         
-        if (!name || !category || !base_price) {
+        if (!name || !base_price) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Name, category, and base_price are required' 
+                error: 'Name and base_price are required' 
             });
         }
         
         const result = await client.query(`
             UPDATE products 
-            SET name = $1, category = $2, base_price = $3, image_url = $4, description = $5, updated_at = NOW()
-            WHERE id = $6
-            RETURNING id, name, category, base_price, image_url, description, updated_at
-        `, [name, category, base_price, image_url, description, productId]);
+            SET name = $1, category = $2, sub_category_id = $3, base_price = $4, image_url = $5, description = $6, updated_at = NOW()
+            WHERE id = $7
+            RETURNING id, name, category, sub_category_id, base_price, image_url, description, updated_at
+        `, [name, category || '', sub_category_id || null, base_price, image_url, description, productId]);
         
         if (result.rows.length === 0) {
             return res.status(404).json({ 

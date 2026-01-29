@@ -460,6 +460,28 @@
             color: white;
         }
 
+        .btn-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+            border: 1px solid var(--warning);
+        }
+
+        .btn-warning:hover {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: white;
+        }
+
         /* ==================== LOADING SPINNER ==================== */
         .spinner {
             display: inline-block;
@@ -611,6 +633,7 @@
                 <ul class="sidebar-nav">
                     <li><a href="#" class="active" onclick="showPage('overview')">📊 Overview</a></li>
                     <li><a href="#" onclick="showPage('inventory')">📦 Inventory</a></li>
+                    <li><a href="#" onclick="showPage('categories')">🏷️ Categories</a></li>
                     <li><a href="#" onclick="showPage('orders')">🛍️ Orders</a></li>
                     <li><a href="#" onclick="showPage('sales')">📊 Sales Analytics</a></li>
                     <li><a href="#" onclick="showPage('customers')">👥 Customers</a></li>
@@ -696,6 +719,56 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </section>
+
+                <!-- Categories Page -->
+                <section class="page-section" id="categories-page">
+                    <h2 style="margin-bottom: 25px;">Category Management</h2>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <!-- Main Categories -->
+                        <div class="data-table">
+                            <div class="table-header">
+                                <h2>Main Categories</h2>
+                                <button class="btn-primary" onclick="showAddMainCategoryModal()">➕ Add Main</button>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Order</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="main-categories-table">
+                                    <tr><td colspan="4" style="text-align: center;">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Sub Categories -->
+                        <div class="data-table">
+                            <div class="table-header">
+                                <h2>Sub Categories</h2>
+                                <button class="btn-primary" onclick="showAddSubCategoryModal()">➕ Add Sub</button>
+                            </div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Main Category</th>
+                                        <th>Order</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sub-categories-table">
+                                    <tr><td colspan="5" style="text-align: center;">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
@@ -798,8 +871,11 @@
                 <section class="page-section" id="customers-page">
                     <div class="data-table">
                         <div class="table-header">
-                            <h2>Customer Rewards</h2>
-                            <input type="text" id="customersSearch" placeholder="Search by phone or name..." onkeyup="searchCustomers()">
+                            <h2>Customer Management</h2>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn-primary" onclick="showAddCustomerModal()">➕ Add Customer</button>
+                                <input type="text" id="customersSearch" placeholder="Search by phone or name..." onkeyup="searchCustomers()" style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: white;">
+                            </div>
                         </div>
                         <table>
                             <thead>
@@ -807,6 +883,7 @@
                                     <th>Name</th>
                                     <th>Phone</th>
                                     <th>Email</th>
+                                    <th>Address</th>
                                     <th>Points</th>
                                     <th>Total Spent</th>
                                     <th>Orders</th>
@@ -814,7 +891,7 @@
                                 </tr>
                             </thead>
                             <tbody id="customers-table">
-                                <tr><td colspan="7" style="text-align: center;">Loading...</td></tr>
+                                <tr><td colspan="8" style="text-align: center;">Loading...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -857,32 +934,10 @@
                     <input type="text" id="editProductName" placeholder="e.g., iPhone 15 Pro Case">
                 </div>
                 <div class="form-group">
-                    <label>Category *</label>
-                    <select id="editProductCategory" onchange="toggleCustomCategory(this, 'editCustomCategory')">
-                        <option value="">Select category...</option>
-                        <option value="Airpods Case">AirPods Cases</option>
-                        <option value="Chargers">Chargers</option>
-                        <option value="Screen Protectors">Screen Protectors</option>
-                        <option value="Iphone 11">iPhone 11</option>
-                        <option value="Iphone 11 ProMax">iPhone 11 ProMax</option>
-                        <option value="Iphone 12 Pro">iPhone 12 Pro</option>
-                        <option value="Iphone 12 ProMax">iPhone 12 ProMax</option>
-                        <option value="Iphone 13">iPhone 13</option>
-                        <option value="Iphone 13 Pro">iPhone 13 Pro</option>
-                        <option value="Iphone 13 ProMax">iPhone 13 ProMax</option>
-                        <option value="Iphone 14 Plus">iPhone 14 Plus</option>
-                        <option value="Iphone 14 Pro">iPhone 14 Pro</option>
-                        <option value="Iphone 14 ProMax">iPhone 14 ProMax</option>
-                        <option value="Iphone 15 Plus">iPhone 15 Plus</option>
-                        <option value="Iphone 15 Pro">iPhone 15 Pro</option>
-                        <option value="Iphone 15 ProMax">iPhone 15 ProMax</option>
-                        <option value="Iphone 16 Pro">iPhone 16 Pro</option>
-                        <option value="Iphone 16 ProMax">iPhone 16 ProMax</option>
-                        <option value="S23 Ultra">Samsung S23 Ultra</option>
-                        <option value="S24 Ultra">Samsung S24 Ultra</option>
-                        <option value="__custom__">➕ Create New Category</option>
+                    <label>Sub Category *</label>
+                    <select id="editProductSubCategory">
+                        <option value="">Loading categories...</option>
                     </select>
-                    <input type="text" id="editCustomCategory" placeholder="Enter new category name" style="display: none; margin-top: 10px;">
                 </div>
                 <div class="form-group">
                     <label>Base Price (JMD) *</label>
@@ -924,32 +979,10 @@
                     <input type="text" id="newProductName" placeholder="e.g., iPhone 15 Pro Case">
                 </div>
                 <div class="form-group">
-                    <label>Category *</label>
-                    <select id="newProductCategory" onchange="toggleCustomCategory(this, 'newCustomCategory')">
-                        <option value="">Select category...</option>
-                        <option value="Airpods Case">AirPods Cases</option>
-                        <option value="Chargers">Chargers</option>
-                        <option value="Screen Protectors">Screen Protectors</option>
-                        <option value="Iphone 11">iPhone 11</option>
-                        <option value="Iphone 11 ProMax">iPhone 11 ProMax</option>
-                        <option value="Iphone 12 Pro">iPhone 12 Pro</option>
-                        <option value="Iphone 12 ProMax">iPhone 12 ProMax</option>
-                        <option value="Iphone 13">iPhone 13</option>
-                        <option value="Iphone 13 Pro">iPhone 13 Pro</option>
-                        <option value="Iphone 13 ProMax">iPhone 13 ProMax</option>
-                        <option value="Iphone 14 Plus">iPhone 14 Plus</option>
-                        <option value="Iphone 14 Pro">iPhone 14 Pro</option>
-                        <option value="Iphone 14 ProMax">iPhone 14 ProMax</option>
-                        <option value="Iphone 15 Plus">iPhone 15 Plus</option>
-                        <option value="Iphone 15 Pro">iPhone 15 Pro</option>
-                        <option value="Iphone 15 ProMax">iPhone 15 ProMax</option>
-                        <option value="Iphone 16 Pro">iPhone 16 Pro</option>
-                        <option value="Iphone 16 ProMax">iPhone 16 ProMax</option>
-                        <option value="S23 Ultra">Samsung S23 Ultra</option>
-                        <option value="S24 Ultra">Samsung S24 Ultra</option>
-                        <option value="__custom__">➕ Create New Category</option>
+                    <label>Sub Category *</label>
+                    <select id="newProductSubCategory">
+                        <option value="">Loading categories...</option>
                     </select>
-                    <input type="text" id="newCustomCategory" placeholder="Enter new category name" style="display: none; margin-top: 10px;">
                 </div>
                 <div class="form-group">
                     <label>Base Price (JMD) *</label>
@@ -984,6 +1017,99 @@
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
                     <button class="btn-secondary" onclick="closeCreateProductModal()">Cancel</button>
                     <button class="btn-primary" onclick="createProduct()">Create Product</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Category Modal -->
+    <div id="mainCategoryModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 id="mainCategoryModalTitle">➕ Add Main Category</h2>
+                <span class="close" onclick="closeMainCategoryModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editMainCategoryId">
+                <div class="form-group">
+                    <label>Category Name *</label>
+                    <input type="text" id="mainCategoryName" placeholder="e.g., iPhone Cases" required>
+                </div>
+                <div class="form-group">
+                    <label>Display Order</label>
+                    <input type="number" id="mainCategoryOrder" value="0" min="0">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="closeMainCategoryModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveMainCategory()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sub Category Modal -->
+    <div id="subCategoryModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 id="subCategoryModalTitle">➕ Add Sub Category</h2>
+                <span class="close" onclick="closeSubCategoryModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editSubCategoryId">
+                <div class="form-group">
+                    <label>Main Category *</label>
+                    <select id="subCategoryMain" required></select>
+                </div>
+                <div class="form-group">
+                    <label>Sub Category Name *</label>
+                    <input type="text" id="subCategoryName" placeholder="e.g., iPhone 15 Pro" required>
+                </div>
+                <div class="form-group">
+                    <label>Display Order</label>
+                    <input type="number" id="subCategoryOrder" value="0" min="0">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="closeSubCategoryModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveSubCategory()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Customer Modal -->
+    <div id="customerModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2 id="customerModalTitle">➕ Add Customer</h2>
+                <span class="close" onclick="closeCustomerModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editCustomerId">
+                
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" id="customerName" placeholder="e.g., John Doe" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>Phone *</label>
+                    <input type="tel" id="customerPhone" placeholder="e.g., +1876-555-0123" required>
+                    <small style="color: var(--gray); font-size: 12px;">Phone number must be unique</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="customerEmail" placeholder="e.g., john@example.com">
+                </div>
+                
+                <div class="form-group">
+                    <label>Address</label>
+                    <textarea id="customerAddress" placeholder="e.g., 123 Main Street, Kingston, Jamaica" rows="3"></textarea>
+                </div>
+                
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button class="btn-secondary" onclick="closeCustomerModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveCustomer()">Save Customer</button>
                 </div>
             </div>
         </div>
