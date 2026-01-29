@@ -1206,7 +1206,7 @@ app.get('/admin/customers', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT 
-                id, phone, name, email, 
+                id, phone, name, email, address,
                 total_points, total_spent, total_orders,
                 created_at, updated_at
             FROM customers
@@ -1278,6 +1278,141 @@ app.post('/admin/customers/:customerId/adjust-points', async (req, res) => {
     }
 });
 
+// Create new customer (admin)
+app.post('/admin/customers', async (req, res) => {
+    try {
+        const { name, phone, email, address } = req.body;
+        
+        // Validate required fields
+        if (!phone) {
+            return res.status(400).json({ success: false, error: 'Phone number is required' });
+        }
+        
+        // Check if customer with this phone already exists
+        const existingCustomer = await pool.query(
+            'SELECT id FROM customers WHERE phone = $1',
+            [phone]
+        );
+        
+        if (existingCustomer.rows.length > 0) {
+            return res.status(400).json({ success: false, error: 'Customer with this phone number already exists' });
+        }
+        
+        // Create new customer
+        const result = await pool.query(`
+            INSERT INTO customers (name, phone, email, address, total_points, total_spent, total_orders)
+            VALUES ($1, $2, $3, $4, 0, 0, 0)
+            RETURNING id, name, phone, email, address, total_points, total_spent, total_orders, created_at
+        `, [name || '', phone, email || '', address || '']);
+        
+        res.json({ 
+            success: true, 
+            customer: result.rows[0],
+            message: 'Customer created successfully'
+        });
+        
+    } catch (error) {
+        console.error('Create customer error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update customer (admin)
+app.put('/admin/customers/:customerId', async (req, res) => {
+    try {
+        const { customerId } = req.params;
+        const { name, phone, email, address } = req.body;
+        
+        // Validate required fields
+        if (!phone) {
+            return res.status(400).json({ success: false, error: 'Phone number is required' });
+        }
+        
+        // Check if phone number is being changed to one that already exists
+        const existingCustomer = await pool.query(
+            'SELECT id FROM customers WHERE phone = $1 AND id != $2',
+            [phone, customerId]
+        );
+        
+        if (existingCustomer.rows.length > 0) {
+            return res.status(400).json({ success: false, error: 'Another customer with this phone number already exists' });
+        }
+        
+        // Update customer
+        const result = await pool.query(`
+            UPDATE customers 
+            SET name = $1,
+                phone = $2,
+                email = $3,
+                address = $4,
+                updated_at = NOW()
+            WHERE id = $5
+            RETURNING id, name, phone, email, address, total_points, total_spent, total_orders, created_at, updated_at
+        `, [name || '', phone, email || '', address || '', customerId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Customer not found' });
+        }
+        
+        res.json({ 
+            success: true, 
+            customer: result.rows[0],
+            message: 'Customer updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Update customer error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete customer (admin)
+app.delete('/admin/customers/:customerId', async (req, res) => {
+    const client = await pool.connect();
+    
+    try {
+        await client.query('BEGIN');
+        
+        const { customerId } = req.params;
+        
+        // Check if customer exists
+        const customerResult = await client.query(
+            'SELECT id FROM customers WHERE id = $1',
+            [customerId]
+        );
+        
+        if (customerResult.rows.length === 0) {
+            throw new Error('Customer not found');
+        }
+        
+        // Delete related points transactions first (foreign key constraint)
+        await client.query(
+            'DELETE FROM points_transactions WHERE customer_id = $1',
+            [customerId]
+        );
+        
+        // Delete customer
+        await client.query(
+            'DELETE FROM customers WHERE id = $1',
+            [customerId]
+        );
+        
+        await client.query('COMMIT');
+        
+        res.json({ 
+            success: true, 
+            message: 'Customer deleted successfully'
+        });
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Delete customer error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Get sales analytics
 app.get('/admin/sales/analytics', async (req, res) => {
     try {
@@ -1294,3 +1429,4 @@ app.get('/admin/sales/analytics', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
