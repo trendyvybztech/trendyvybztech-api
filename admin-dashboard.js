@@ -219,6 +219,9 @@ function showPage(pageName) {
         case 'inventory':
             loadInventory();
             break;
+        case 'categories':
+            loadCategories();
+            break;
         case 'orders':
             loadOrders();
             break;
@@ -1029,6 +1032,9 @@ async function viewOrderDetails(orderId) {
                             <h3>Order Information</h3>
                             <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleDateString()}</p>
                             <p><strong>Payment:</strong> ${order.payment_method}</p>
+                            ${order.transaction_id ? `<p><strong>Transaction ID:</strong> ${order.transaction_id}</p>` : ''}
+                            ${order.usd_amount ? `<p><strong>USD Amount:</strong> $${parseFloat(order.usd_amount).toFixed(2)}</p>` : ''}
+                            ${order.exchange_rate ? `<p><strong>Exchange Rate:</strong> ${parseFloat(order.exchange_rate).toFixed(2)} JMD/USD</p>` : ''}
                             <p><strong>Delivery:</strong> ${order.delivery_option || 'N/A'}</p>
                             <p><strong>Status:</strong> <span class="badge badge-warning">${order.order_status}</span></p>
                         </div>
@@ -1190,7 +1196,7 @@ async function loadSalesAnalytics() {
 
 async function loadCustomers() {
     const tbody = document.getElementById('customers-table');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Loading...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading...</td></tr>';
     
     try {
         const response = await fetch(`${ADMIN_API_URL}/customers`);
@@ -1204,12 +1210,19 @@ async function loadCustomers() {
                     <td>${customer.name || 'N/A'}</td>
                     <td>${customer.phone}</td>
                     <td>${customer.email || 'N/A'}</td>
+                    <td>${customer.address || 'N/A'}</td>
                     <td><strong style="color: var(--primary);">${customer.total_points}</strong></td>
                     <td>JMD $${parseFloat(customer.total_spent).toLocaleString()}</td>
                     <td>${customer.total_orders}</td>
                     <td>
-                        <button class="btn-small btn-edit" onclick="adjustCustomerPoints(${customer.id}, '${customer.name || customer.phone}', ${customer.total_points})">
-                            Adjust Points
+                        <button class="btn-small btn-edit" onclick="editCustomer(${customer.id})" style="margin-right: 5px;">
+                            ✏️ Edit
+                        </button>
+                        <button class="btn-small btn-warning" onclick="adjustCustomerPoints(${customer.id}, '${(customer.name || customer.phone).replace(/'/g, "\\'")}', ${customer.total_points})" style="margin-right: 5px;">
+                            💰 Points
+                        </button>
+                        <button class="btn-small btn-danger" onclick="deleteCustomer(${customer.id}, '${(customer.name || customer.phone).replace(/'/g, "\\'")}')">
+                            🗑️
                         </button>
                     </td>
                 </tr>
@@ -1217,11 +1230,11 @@ async function loadCustomers() {
             
             tbody.innerHTML = rows;
         } else {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No customers yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No customers yet</td></tr>';
         }
     } catch (error) {
         console.error('Error loading customers:', error);
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--danger);">Error loading customers</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--danger);">Error loading customers</td></tr>';
     }
 }
 
@@ -1275,4 +1288,413 @@ async function adjustPoints(customerId, pointsChange, notes) {
         console.error('Error adjusting points:', error);
         showNotification(error.message || 'Failed to adjust points', 'error');
     }
+}
+
+// ==================== CUSTOMER MANAGEMENT ====================
+
+function showAddCustomerModal() {
+    document.getElementById('customerModalTitle').textContent = '➕ Add Customer';
+    document.getElementById('editCustomerId').value = '';
+    document.getElementById('customerName').value = '';
+    document.getElementById('customerPhone').value = '';
+    document.getElementById('customerEmail').value = '';
+    document.getElementById('customerAddress').value = '';
+    document.getElementById('customerModal').style.display = 'block';
+}
+
+function editCustomer(customerId) {
+    const customer = window.customersData.find(c => c.id === customerId);
+    if (!customer) {
+        showNotification('Customer not found', 'error');
+        return;
+    }
+    
+    document.getElementById('customerModalTitle').textContent = '✏️ Edit Customer';
+    document.getElementById('editCustomerId').value = customer.id;
+    document.getElementById('customerName').value = customer.name || '';
+    document.getElementById('customerPhone').value = customer.phone;
+    document.getElementById('customerEmail').value = customer.email || '';
+    document.getElementById('customerAddress').value = customer.address || '';
+    document.getElementById('customerModal').style.display = 'block';
+}
+
+function closeCustomerModal() {
+    document.getElementById('customerModal').style.display = 'none';
+}
+
+async function saveCustomer() {
+    const customerId = document.getElementById('editCustomerId').value;
+    const name = document.getElementById('customerName').value.trim();
+    const phone = document.getElementById('customerPhone').value.trim();
+    const email = document.getElementById('customerEmail').value.trim();
+    const address = document.getElementById('customerAddress').value.trim();
+    
+    // Validation
+    if (!phone) {
+        showNotification('Phone number is required', 'error');
+        return;
+    }
+    
+    if (!name) {
+        showNotification('Name is required', 'error');
+        return;
+    }
+    
+    const customerData = { name, phone, email, address };
+    
+    try {
+        const url = customerId 
+            ? `${ADMIN_API_URL}/customers/${customerId}`
+            : `${ADMIN_API_URL}/customers`;
+        
+        const method = customerId ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify(customerData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message || 'Customer saved successfully', 'success');
+            closeCustomerModal();
+            loadCustomers();
+        } else {
+            showNotification(data.error || 'Failed to save customer', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving customer:', error);
+        showNotification('Failed to save customer', 'error');
+    }
+}
+
+async function deleteCustomer(customerId, customerName) {
+    if (!confirm(`Are you sure you want to delete customer "${customerName}"?\n\nThis will also delete all their points transaction history. This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/customers/${customerId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification('Customer deleted successfully', 'success');
+            loadCustomers();
+        } else {
+            showNotification(data.error || 'Failed to delete customer', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting customer:', error);
+        showNotification('Failed to delete customer', 'error');
+    }
+}
+
+// ==================== CATEGORY MANAGEMENT ====================
+
+async function loadCategories() {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/categories`);
+        const data = await response.json();
+        
+        if (data.success) {
+            window.mainCategoriesData = data.main_categories;
+            window.subCategoriesData = data.sub_categories;
+            
+            renderMainCategories(data.main_categories);
+            renderSubCategories(data.sub_categories);
+        }
+    } catch (error) {
+        console.error('Load categories error:', error);
+        showNotification('Failed to load categories', 'error');
+    }
+}
+
+function renderMainCategories(categories) {
+    const tbody = document.getElementById('main-categories-table');
+    
+    if (categories.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No main categories</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = categories.map(cat => `
+        <tr>
+            <td><strong>${cat.name}</strong></td>
+            <td>${cat.display_order}</td>
+            <td><span class="badge ${cat.is_active ? 'badge-success' : 'badge-danger'}">${cat.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td>
+                <button class="btn-small btn-edit" onclick="editMainCategory(${cat.id})" style="margin-right:5px;">✏️</button>
+                <button class="btn-small ${cat.is_active ? 'btn-warning' : 'badge-success'}" onclick="toggleMainCategory(${cat.id}, ${!cat.is_active})" style="margin-right:5px;">${cat.is_active ? '🔕' : '✅'}</button>
+                <button class="btn-small btn-danger" onclick="deleteMainCategory(${cat.id}, '${cat.name.replace(/'/g, "\\'")}')">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderSubCategories(subCategories) {
+    const tbody = document.getElementById('sub-categories-table');
+    
+    if (subCategories.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No sub categories</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = subCategories.map(cat => `
+        <tr>
+            <td>${cat.name}</td>
+            <td>${cat.main_category_name}</td>
+            <td>${cat.display_order}</td>
+            <td><span class="badge ${cat.is_active ? 'badge-success' : 'badge-danger'}">${cat.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td>
+                <button class="btn-small btn-edit" onclick="editSubCategory(${cat.id})" style="margin-right:5px;">✏️</button>
+                <button class="btn-small ${cat.is_active ? 'btn-warning' : 'badge-success'}" onclick="toggleSubCategory(${cat.id}, ${!cat.is_active})" style="margin-right:5px;">${cat.is_active ? '🔕' : '✅'}</button>
+                <button class="btn-small btn-danger" onclick="deleteSubCategory(${cat.id}, '${cat.name.replace(/'/g, "\\'")}')">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function showAddMainCategoryModal() {
+    document.getElementById('mainCategoryModalTitle').textContent = '➕ Add Main Category';
+    document.getElementById('editMainCategoryId').value = '';
+    document.getElementById('mainCategoryName').value = '';
+    document.getElementById('mainCategoryOrder').value = '0';
+    document.getElementById('mainCategoryModal').style.display = 'block';
+}
+
+function editMainCategory(id) {
+    const cat = window.mainCategoriesData.find(c => c.id === id);
+    if (!cat) return;
+    
+    document.getElementById('mainCategoryModalTitle').textContent = '✏️ Edit Main Category';
+    document.getElementById('editMainCategoryId').value = cat.id;
+    document.getElementById('mainCategoryName').value = cat.name;
+    document.getElementById('mainCategoryOrder').value = cat.display_order;
+    document.getElementById('mainCategoryModal').style.display = 'block';
+}
+
+function closeMainCategoryModal() {
+    document.getElementById('mainCategoryModal').style.display = 'none';
+}
+
+async function saveMainCategory() {
+    const id = document.getElementById('editMainCategoryId').value;
+    const name = document.getElementById('mainCategoryName').value.trim();
+    const display_order = parseInt(document.getElementById('mainCategoryOrder').value);
+    
+    if (!name) {
+        showNotification('Category name required', 'error');
+        return;
+    }
+    
+    try {
+        const url = id ? `${ADMIN_API_URL}/categories/main/${id}` : `${ADMIN_API_URL}/categories/main`;
+        const method = id ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ name, display_order })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            closeMainCategoryModal();
+            loadCategories();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Save main category error:', error);
+        showNotification('Failed to save category', 'error');
+    }
+}
+
+async function toggleMainCategory(id, isActive) {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/categories/main/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ is_active: isActive })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            loadCategories();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Toggle category error:', error);
+        showNotification('Failed to update category', 'error');
+    }
+}
+
+async function deleteMainCategory(id, name) {
+    if (!confirm(`Delete main category "${name}"?\n\nThis will also delete all sub-categories and may affect products.`)) return;
+    
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/categories/main/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            loadCategories();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Delete category error:', error);
+        showNotification('Failed to delete category', 'error');
+    }
+}
+
+function showAddSubCategoryModal() {
+    document.getElementById('subCategoryModalTitle').textContent = '➕ Add Sub Category';
+    document.getElementById('editSubCategoryId').value = '';
+    document.getElementById('subCategoryName').value = '';
+    document.getElementById('subCategoryOrder').value = '0';
+    
+    const select = document.getElementById('subCategoryMain');
+    select.innerHTML = '<option value="">Select main category...</option>' +
+        window.mainCategoriesData
+            .filter(c => c.is_active)
+            .map(c => `<option value="${c.id}">${c.name}</option>`)
+            .join('');
+    
+    document.getElementById('subCategoryModal').style.display = 'block';
+}
+
+function editSubCategory(id) {
+    const cat = window.subCategoriesData.find(c => c.id === id);
+    if (!cat) return;
+    
+    document.getElementById('subCategoryModalTitle').textContent = '✏️ Edit Sub Category';
+    document.getElementById('editSubCategoryId').value = cat.id;
+    document.getElementById('subCategoryName').value = cat.name;
+    document.getElementById('subCategoryOrder').value = cat.display_order;
+    
+    const select = document.getElementById('subCategoryMain');
+    select.innerHTML = '<option value="">Select main category...</option>' +
+        window.mainCategoriesData
+            .map(c => `<option value="${c.id}" ${c.id === cat.main_category_id ? 'selected' : ''}>${c.name}</option>`)
+            .join('');
+    
+    document.getElementById('subCategoryModal').style.display = 'block';
+}
+
+function closeSubCategoryModal() {
+    document.getElementById('subCategoryModal').style.display = 'none';
+}
+
+async function saveSubCategory() {
+    const id = document.getElementById('editSubCategoryId').value;
+    const name = document.getElementById('subCategoryName').value.trim();
+    const main_category_id = parseInt(document.getElementById('subCategoryMain').value);
+    const display_order = parseInt(document.getElementById('subCategoryOrder').value);
+    
+    if (!name || !main_category_id) {
+        showNotification('Name and main category required', 'error');
+        return;
+    }
+    
+    try {
+        const url = id ? `${ADMIN_API_URL}/categories/sub/${id}` : `${ADMIN_API_URL}/categories/sub`;
+        const method = id ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ name, main_category_id, display_order })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            closeSubCategoryModal();
+            loadCategories();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Save sub category error:', error);
+        showNotification('Failed to save sub category', 'error');
+    }
+}
+
+async function toggleSubCategory(id, isActive) {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/categories/sub/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ is_active: isActive })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            loadCategories();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Toggle sub category error:', error);
+        showNotification('Failed to update sub category', 'error');
+    }
+}
+
+async function deleteSubCategory(id, name) {
+    if (!confirm(`Delete sub category "${name}"?\n\nThis may affect products using this category.`)) return;
+    
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/categories/sub/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            loadCategories();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Delete sub category error:', error);
+        showNotification('Failed to delete sub category', 'error');
+    }
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const customerModal = document.getElementById('customerModal');
+    const mainCatModal = document.getElementById('mainCategoryModal');
+    const subCatModal = document.getElementById('subCategoryModal');
+    
+    if (event.target === customerModal) closeCustomerModal();
+    if (event.target === mainCatModal) closeMainCategoryModal();
+    if (event.target === subCatModal) closeSubCategoryModal();
 }
