@@ -72,8 +72,28 @@ app.get('/api/products', async (req, res) => {
             LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
             LEFT JOIN main_categories mc ON sc.main_category_id = mc.id
             WHERE p.is_active = true
-            GROUP BY p.id, sc.name, mc.name, mc.display_order, sc.display_order
+            GROUP BY 
+                p.id, 
+                p.name, 
+                p.category, 
+                p.sub_category_id, 
+                sc.name, 
+                mc.name, 
+                p.base_price, 
+                p.image_url, 
+                p.description,
+                mc.display_order, 
+                sc.display_order
             ORDER BY mc.display_order, sc.display_order, p.name;
+        `;
+        
+        const result = await pool.query(query);
+        res.json({ success: true, products: result.rows });
+    } catch (error) {
+        console.error('Get products error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
         `;
         
         // Don't forget to actually execute the query (adding this in case it was below your snippet)
