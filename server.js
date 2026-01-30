@@ -999,10 +999,6 @@ app.get('/api/promotional-banner', async (req, res) => {
     }
 });
 
-// Admin routes
-const adminRoutes = require('./admin-routes');
-app.use('/admin', adminRoutes);
-
 // Get all banners (admin)
 app.get('/admin/promotional-banners', async (req, res) => {
     try {
@@ -1095,6 +1091,10 @@ app.delete('/admin/promotional-banners/:id', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+// Admin routes
+const adminRoutes = require('./admin-routes');
+app.use('/admin', adminRoutes);
 
 // Start server
 app.listen(PORT, () => {
