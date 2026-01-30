@@ -222,6 +222,9 @@ function showPage(pageName) {
         case 'categories':
             loadCategories();
             break;
+        case 'banners':
+            loadBanners();
+            break;
         case 'orders':
             loadOrders();
             break;
@@ -1725,13 +1728,172 @@ async function deleteSubCategory(id, name) {
     }
 }
 
+// ==================== BANNER MANAGEMENT ====================
+
+async function loadBanners() {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/promotional-banners`);
+        const data = await response.json();
+        
+        if (data.success) {
+            window.bannersData = data.banners;
+            renderBanners(data.banners);
+        }
+    } catch (error) {
+        console.error('Load banners error:', error);
+        showNotification('Failed to load banners', 'error');
+    }
+}
+
+function renderBanners(banners) {
+    const tbody = document.getElementById('banners-table');
+    
+    if (banners.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No banners</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = banners.map(b => `
+        <tr>
+            <td>${b.icon}</td>
+            <td>${b.title}</td>
+            <td>${b.description || 'N/A'}</td>
+            <td>${b.button_text} → ${b.button_link}</td>
+            <td>${b.display_order}</td>
+            <td><span class="badge ${b.is_active ? 'badge-success' : 'badge-danger'}">${b.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td>
+                <button class="btn-small btn-edit" onclick="editBanner(${b.id})" style="margin-right:5px;">✏️</button>
+                <button class="btn-small ${b.is_active ? 'btn-warning' : 'badge-success'}" onclick="toggleBanner(${b.id}, ${!b.is_active})" style="margin-right:5px;">${b.is_active ? '🔕' : '✅'}</button>
+                <button class="btn-small btn-danger" onclick="deleteBanner(${b.id}, '${b.title.replace(/'/g, "\\'")}')">🗑️</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function showAddBannerModal() {
+    document.getElementById('bannerModalTitle').textContent = '➕ Add Banner';
+    document.getElementById('editBannerId').value = '';
+    document.getElementById('bannerIcon').value = '🎁';
+    document.getElementById('bannerTitle').value = '';
+    document.getElementById('bannerDescription').value = '';
+    document.getElementById('bannerButtonText').value = 'Browse Products';
+    document.getElementById('bannerButtonLink').value = 'products.html';
+    document.getElementById('bannerOrder').value = '0';
+    document.getElementById('bannerModal').style.display = 'block';
+}
+
+function editBanner(id) {
+    const banner = window.bannersData.find(b => b.id === id);
+    if (!banner) return;
+    
+    document.getElementById('bannerModalTitle').textContent = '✏️ Edit Banner';
+    document.getElementById('editBannerId').value = banner.id;
+    document.getElementById('bannerIcon').value = banner.icon;
+    document.getElementById('bannerTitle').value = banner.title;
+    document.getElementById('bannerDescription').value = banner.description || '';
+    document.getElementById('bannerButtonText').value = banner.button_text;
+    document.getElementById('bannerButtonLink').value = banner.button_link;
+    document.getElementById('bannerOrder').value = banner.display_order;
+    document.getElementById('bannerModal').style.display = 'block';
+}
+
+function closeBannerModal() {
+    document.getElementById('bannerModal').style.display = 'none';
+}
+
+async function saveBanner() {
+    const id = document.getElementById('editBannerId').value;
+    const icon = document.getElementById('bannerIcon').value.trim();
+    const title = document.getElementById('bannerTitle').value.trim();
+    const description = document.getElementById('bannerDescription').value.trim();
+    const button_text = document.getElementById('bannerButtonText').value.trim();
+    const button_link = document.getElementById('bannerButtonLink').value.trim();
+    const display_order = parseInt(document.getElementById('bannerOrder').value);
+    
+    if (!title) {
+        showNotification('Title required', 'error');
+        return;
+    }
+    
+    try {
+        const url = id ? `${ADMIN_API_URL}/promotional-banners/${id}` : `${ADMIN_API_URL}/promotional-banners`;
+        const method = id ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ icon, title, description, button_text, button_link, display_order })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            closeBannerModal();
+            loadBanners();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Save banner error:', error);
+        showNotification('Failed to save banner', 'error');
+    }
+}
+
+async function toggleBanner(id, isActive) {
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/promotional-banners/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+            body: JSON.stringify({ is_active: isActive })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            loadBanners();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Toggle banner error:', error);
+        showNotification('Failed to update banner', 'error');
+    }
+}
+
+async function deleteBanner(id, title) {
+    if (!confirm(`Delete banner "${title}"?`)) return;
+    
+    try {
+        const response = await fetch(`${ADMIN_API_URL}/promotional-banners/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(data.message, 'success');
+            loadBanners();
+        } else {
+            showNotification(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Delete banner error:', error);
+        showNotification('Failed to delete banner', 'error');
+    }
+}
+
 // Close modal when clicking outside
 window.onclick = function(event) {
     const customerModal = document.getElementById('customerModal');
     const mainCatModal = document.getElementById('mainCategoryModal');
     const subCatModal = document.getElementById('subCategoryModal');
+    const bannerModal = document.getElementById('bannerModal');
     
     if (event.target === customerModal) closeCustomerModal();
     if (event.target === mainCatModal) closeMainCategoryModal();
     if (event.target === subCatModal) closeSubCategoryModal();
+    if (event.target === bannerModal) closeBannerModal();
 }
