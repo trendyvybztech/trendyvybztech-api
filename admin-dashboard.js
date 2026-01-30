@@ -1732,7 +1732,7 @@ async function deleteSubCategory(id, name) {
 
 async function loadBanners() {
     try {
-        const response = await fetch(`${ADMIN_API_URL}/promotional-banners`);
+        const response = await fetch(`${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners`);
         const data = await response.json();
         
         if (data.success) {
@@ -1816,7 +1816,7 @@ async function saveBanner() {
     }
     
     try {
-        const url = id ? `${ADMIN_API_URL}/promotional-banners/${id}` : `${ADMIN_API_URL}/promotional-banners`;
+        const url = id ? `${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners/${id}` : `${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners`;
         const method = id ? 'PUT' : 'POST';
         
         const response = await fetch(url, {
@@ -1842,7 +1842,7 @@ async function saveBanner() {
 
 async function toggleBanner(id, isActive) {
     try {
-        const response = await fetch(`${ADMIN_API_URL}/promotional-banners/${id}`, {
+        const response = await fetch(`${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
             body: JSON.stringify({ is_active: isActive })
@@ -1866,7 +1866,7 @@ async function deleteBanner(id, title) {
     if (!confirm(`Delete banner "${title}"?`)) return;
     
     try {
-        const response = await fetch(`${ADMIN_API_URL}/promotional-banners/${id}`, {
+        const response = await fetch(`${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${authToken}` }
         });

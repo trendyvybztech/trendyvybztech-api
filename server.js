@@ -974,9 +974,127 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Trendy VybzTech API is running' });
 });
 
+// ============================================
+// PROMOTIONAL BANNER ENDPOINTS
+// ============================================
+
+// Get active promotional banner
+app.get('/api/promotional-banner', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, icon, title, description, button_text, button_link
+            FROM promotional_banners
+            WHERE is_active = true
+            ORDER BY display_order
+            LIMIT 1
+        `);
+        
+        res.json({ 
+            success: true, 
+            banner: result.rows[0] || null
+        });
+    } catch (error) {
+        console.error('Get promotional banner error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Admin routes
 const adminRoutes = require('./admin-routes');
 app.use('/admin', adminRoutes);
+
+// Get all banners (admin)
+app.get('/admin/promotional-banners', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM promotional_banners
+            ORDER BY display_order, created_at DESC
+        `);
+        
+        res.json({ 
+            success: true, 
+            banners: result.rows
+        });
+    } catch (error) {
+        console.error('Get banners error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Create banner (admin)
+app.post('/admin/promotional-banners', async (req, res) => {
+    try {
+        const { icon, title, description, button_text, button_link, display_order } = req.body;
+        
+        if (!title) {
+            return res.status(400).json({ success: false, error: 'Title is required' });
+        }
+        
+        const result = await pool.query(`
+            INSERT INTO promotional_banners (icon, title, description, button_text, button_link, display_order)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        `, [icon || '🎁', title, description || '', button_text || 'Browse Products', button_link || 'products.html', display_order || 0]);
+        
+        res.json({ 
+            success: true, 
+            banner: result.rows[0],
+            message: 'Banner created'
+        });
+    } catch (error) {
+        console.error('Create banner error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update banner (admin)
+app.put('/admin/promotional-banners/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { icon, title, description, button_text, button_link, is_active, display_order } = req.body;
+        
+        const result = await pool.query(`
+            UPDATE promotional_banners
+            SET icon = COALESCE($1, icon),
+                title = COALESCE($2, title),
+                description = COALESCE($3, description),
+                button_text = COALESCE($4, button_text),
+                button_link = COALESCE($5, button_link),
+                is_active = COALESCE($6, is_active),
+                display_order = COALESCE($7, display_order),
+                updated_at = NOW()
+            WHERE id = $8
+            RETURNING *
+        `, [icon, title, description, button_text, button_link, is_active, display_order, id]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Banner not found' });
+        }
+        
+        res.json({ 
+            success: true, 
+            banner: result.rows[0],
+            message: 'Banner updated'
+        });
+    } catch (error) {
+        console.error('Update banner error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Delete banner (admin)
+app.delete('/admin/promotional-banners/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        await pool.query('DELETE FROM promotional_banners WHERE id = $1', [id]);
+        
+        res.json({ success: true, message: 'Banner deleted' });
+    } catch (error) {
+        console.error('Delete banner error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 // Start server
 app.listen(PORT, () => {
