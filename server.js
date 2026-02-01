@@ -46,6 +46,7 @@ app.get('/api/products', async (req, res) => {
                 p.name,
                 p.category,
                 p.sub_category_id,
+                p.show_description_popup,
                 sc.name as sub_category_name,
                 mc.name as main_category_name,
                 p.base_price as price,
@@ -75,7 +76,7 @@ app.get('/api/products', async (req, res) => {
             LEFT JOIN main_categories mc ON sc.main_category_id = mc.id
             WHERE p.is_active = true
             GROUP BY 
-                p.id, p.name, p.category, p.sub_category_id, 
+                p.id, p.name, p.category, p.sub_category_id, p.show_description_popup,
                 sc.name, mc.name, p.base_price, p.image_url, 
                 p.description, mc.display_order, sc.display_order
             ORDER BY mc.display_order, sc.display_order, p.name;
@@ -111,6 +112,7 @@ app.get('/api/products', async (req, res) => {
                 price: parseFloat(product.price),
                 image: product.image,
                 description: product.description,
+                show_description_popup: product.show_description_popup,
                 variants: variants
             };
         });
@@ -666,7 +668,7 @@ app.post('/admin/products', async (req, res) => {
     const client = await pool.connect();
     
     try {
-        const { name, category, sub_category_id, base_price, image_url, description } = req.body;
+        const { name, category, sub_category_id, base_price, image_url, description, show_description_popup } = req.body;
         
         // Validation
         if (!name || !base_price) {
@@ -676,12 +678,12 @@ app.post('/admin/products', async (req, res) => {
             });
         }
         
-        // Insert product with sub_category_id
+        // Insert product with sub_category_id and show_description_popup
         const result = await client.query(`
-            INSERT INTO products (name, category, sub_category_id, base_price, image_url, description)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, name, category, sub_category_id, base_price, image_url, description, created_at
-        `, [name, category || '', sub_category_id || null, base_price, image_url || null, description || null]);
+            INSERT INTO products (name, category, sub_category_id, base_price, image_url, description, show_description_popup)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, name, category, sub_category_id, base_price, image_url, description, show_description_popup, created_at
+        `, [name, category || '', sub_category_id || null, base_price, image_url || null, description || null, show_description_popup || false]);
         
         res.json({ 
             success: true, 
@@ -827,7 +829,7 @@ app.put('/admin/products/:productId', async (req, res) => {
     
     try {
         const { productId } = req.params;
-        const { name, category, sub_category_id, base_price, image_url, description } = req.body;
+        const { name, category, sub_category_id, base_price, image_url, description, show_description_popup } = req.body;
         
         if (!name || !base_price) {
             return res.status(400).json({ 
@@ -838,10 +840,10 @@ app.put('/admin/products/:productId', async (req, res) => {
         
         const result = await client.query(`
             UPDATE products 
-            SET name = $1, category = $2, sub_category_id = $3, base_price = $4, image_url = $5, description = $6, updated_at = NOW()
-            WHERE id = $7
-            RETURNING id, name, category, sub_category_id, base_price, image_url, description, updated_at
-        `, [name, category || '', sub_category_id || null, base_price, image_url, description, productId]);
+            SET name = $1, category = $2, sub_category_id = $3, base_price = $4, image_url = $5, description = $6, show_description_popup = $7, updated_at = NOW()
+            WHERE id = $8
+            RETURNING id, name, category, sub_category_id, base_price, image_url, description, show_description_popup, updated_at
+        `, [name, category || '', sub_category_id || null, base_price, image_url, description, show_description_popup !== undefined ? show_description_popup : false, productId]);
         
         if (result.rows.length === 0) {
             return res.status(404).json({ 
