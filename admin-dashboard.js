@@ -679,6 +679,7 @@ async function createProduct() {
     const base_price = parseFloat(document.getElementById('newProductPrice').value);
     const description = document.getElementById('newProductDescription').value.trim();
     const image_url = document.getElementById('newProductImageUrl').value.trim();
+    const show_description_popup = document.getElementById('newProductShowPopup').checked;
     
     // Validation
     if (!name || !sub_category_id || !base_price) {
@@ -711,7 +712,8 @@ async function createProduct() {
                 sub_category_id,
                 base_price,
                 image_url: image_url || null,
-                description: description || null
+                description: description || null,
+                show_description_popup
             })
         });
         
@@ -807,6 +809,7 @@ function openEditProduct(productId) {
         const priceField = document.getElementById('editProductPrice');
         const descField = document.getElementById('editProductDescription');
         const imageField = document.getElementById('editProductImageUrl');
+        const showPopupField = document.getElementById('editProductShowPopup');
         
         if (idField) idField.value = product.id;
         if (nameField) nameField.value = product.name;
@@ -814,6 +817,7 @@ function openEditProduct(productId) {
         if (priceField) priceField.value = product.price;
         if (descField) descField.value = product.description || '';
         if (imageField) imageField.value = product.image || '';
+        if (showPopupField) showPopupField.checked = product.show_description_popup || false;
         
         // Load variants
         const container = document.getElementById('editVariantsContainer');
@@ -880,6 +884,7 @@ async function saveProductEdits() {
     const base_price = parseFloat(document.getElementById('editProductPrice').value);
     const description = document.getElementById('editProductDescription').value.trim();
     const image_url = document.getElementById('editProductImageUrl').value.trim();
+    const show_description_popup = document.getElementById('editProductShowPopup').checked;
     
     if (!name || !sub_category_id || !base_price) {
         showNotification('Please fill in all required fields', 'error');
@@ -906,7 +911,8 @@ async function saveProductEdits() {
                 sub_category_id,
                 base_price,
                 image_url: image_url || null,
-                description: description || null
+                description: description || null,
+                show_description_popup
             })
         });
         
@@ -1029,11 +1035,13 @@ async function viewOrderDetails(orderId) {
         
         const itemsHTML = items.map(item => {
             let variantDisplay = 'Standard';
+            let categoryDisplay = '';
             try {
                 if (item.variant_details) {
                     const details = typeof item.variant_details === 'string' ? 
                         JSON.parse(item.variant_details) : item.variant_details;
                     variantDisplay = details.colour || details.color || details.variant || 'Standard';
+                    categoryDisplay = details.category || '';
                 }
             } catch (e) {
                 variantDisplay = 'Standard';
@@ -1041,7 +1049,10 @@ async function viewOrderDetails(orderId) {
             
             return `
                 <tr>
-                    <td>${item.product_name}</td>
+                    <td>
+                        <div>${item.product_name}</div>
+                        ${categoryDisplay ? `<small style="color: #888; font-size: 0.85rem;">${categoryDisplay}</small>` : ''}
+                    </td>
                     <td>${variantDisplay}</td>
                     <td>${item.quantity}</td>
                     <td>JMD $${parseFloat(item.unit_price).toFixed(2)}</td>
@@ -1732,7 +1743,7 @@ async function deleteSubCategory(id, name) {
 
 async function loadBanners() {
     try {
-        const response = await fetch(`${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners`);
+        const response = await fetch(`${ADMIN_API_URL}/promotional-banners`);
         const data = await response.json();
         
         if (data.success) {
@@ -1816,7 +1827,7 @@ async function saveBanner() {
     }
     
     try {
-        const url = id ? `${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners/${id}` : `${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners`;
+        const url = id ? `${ADMIN_API_URL}/promotional-banners/${id}` : `${ADMIN_API_URL}/promotional-banners`;
         const method = id ? 'PUT' : 'POST';
         
         const response = await fetch(url, {
@@ -1842,7 +1853,7 @@ async function saveBanner() {
 
 async function toggleBanner(id, isActive) {
     try {
-        const response = await fetch(`${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners/${id}`, {
+        const response = await fetch(`${ADMIN_API_URL}/promotional-banners/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
             body: JSON.stringify({ is_active: isActive })
@@ -1866,7 +1877,7 @@ async function deleteBanner(id, title) {
     if (!confirm(`Delete banner "${title}"?`)) return;
     
     try {
-        const response = await fetch(`${ADMIN_API_URL.replace('/admin', '')}/admin/promotional-banners/${id}`, {
+        const response = await fetch(`${ADMIN_API_URL}/promotional-banners/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
