@@ -46,7 +46,6 @@ app.get('/api/products', async (req, res) => {
                 p.name,
                 p.category,
                 p.sub_category_id,
-                p.show_description_popup,
                 sc.name as sub_category_name,
                 mc.name as main_category_name,
                 p.base_price as price,
@@ -76,7 +75,7 @@ app.get('/api/products', async (req, res) => {
             LEFT JOIN main_categories mc ON sc.main_category_id = mc.id
             WHERE p.is_active = true
             GROUP BY 
-                p.id, p.name, p.category, p.sub_category_id, p.show_description_popup,
+                p.id, p.name, p.category, p.sub_category_id, 
                 sc.name, mc.name, p.base_price, p.image_url, 
                 p.description, mc.display_order, sc.display_order
             ORDER BY mc.display_order, sc.display_order, p.name;
@@ -112,7 +111,6 @@ app.get('/api/products', async (req, res) => {
                 price: parseFloat(product.price),
                 image: product.image,
                 description: product.description,
-                show_description_popup: product.show_description_popup,
                 variants: variants
             };
         });
@@ -263,17 +261,12 @@ app.post('/api/orders', async (req, res) => {
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
             `;
             
-            const variantDetailsWithCategory = {
-                ...item.variants,
-                category: item.category
-            };
-            
             await client.query(orderItemQuery, [
                 db_order_id,
                 item.product_id,
                 variant.id,
                 item.product_name,
-                JSON.stringify(variantDetailsWithCategory),
+                JSON.stringify(item.variants),
                 item.quantity,
                 item.unit_price,
                 item.total_price
@@ -328,6 +321,7 @@ app.post('/api/orders', async (req, res) => {
                     );
                     
                     let customerId;
+                    
                     if (customer.rows.length === 0) {
                         // Create new customer
                         const newCustomer = await client2.query(`
@@ -339,6 +333,7 @@ app.post('/api/orders', async (req, res) => {
                     } else {
                         // Update existing customer
                         customerId = customer.rows[0].id;
+                        
                         await client2.query(`
                             UPDATE customers 
                             SET name = $1, email = $2, total_spent = total_spent + $3, total_orders = total_orders + 1, updated_at = NOW()
@@ -365,6 +360,7 @@ app.post('/api/orders', async (req, res) => {
                             VALUES ($1, $2, 'earned', $3, $4, $5, 'Points earned from order')
                         `, [customerId, order_id, pointsEarned, updatedCustomer.rows[0].total_points, total]);
                     }
+                    
                 } finally {
                     client2.release();
                 }
@@ -389,6 +385,53 @@ app.post('/api/orders', async (req, res) => {
         });
     } finally {
         client.release();
+    }
+});
+
+// Track order (public endpoint - requires order_id and phone verification)
+app.post('/api/orders/track', async (req, res) => {
+    try {
+        const { order_id, phone } = req.body;
+        
+        if (!order_id || !phone) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Order ID and phone number are required' 
+            });
+        }
+        
+        // Get order with phone verification
+        const orderQuery = `
+            SELECT 
+                o.*,
+                json_agg(
+                    json_build_object(
+                        'product_name', oi.product_name,
+                        'variant_details', oi.variant_details,
+                        'quantity', oi.quantity,
+                        'unit_price', oi.unit_price,
+                        'total_price', oi.total_price
+                    )
+                ) as items
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            WHERE o.order_id = $1 AND o.customer_phone LIKE $2
+            GROUP BY o.id;
+        `;
+        
+        const result = await pool.query(orderQuery, [order_id, `%${phone}%`]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Order not found or phone number does not match' 
+            });
+        }
+        
+        res.json({ success: true, order: result.rows[0] });
+    } catch (error) {
+        console.error('Error tracking order:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -673,7 +716,7 @@ app.post('/admin/products', async (req, res) => {
     const client = await pool.connect();
     
     try {
-        const { name, category, sub_category_id, base_price, image_url, description, show_description_popup } = req.body;
+        const { name, category, sub_category_id, base_price, image_url, description } = req.body;
         
         // Validation
         if (!name || !base_price) {
@@ -683,12 +726,12 @@ app.post('/admin/products', async (req, res) => {
             });
         }
         
-        // Insert product with sub_category_id and show_description_popup
+        // Insert product with sub_category_id
         const result = await client.query(`
-            INSERT INTO products (name, category, sub_category_id, base_price, image_url, description, show_description_popup)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, name, category, sub_category_id, base_price, image_url, description, show_description_popup, created_at
-        `, [name, category || '', sub_category_id || null, base_price, image_url || null, description || null, show_description_popup || false]);
+            INSERT INTO products (name, category, sub_category_id, base_price, image_url, description)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, name, category, sub_category_id, base_price, image_url, description, created_at
+        `, [name, category || '', sub_category_id || null, base_price, image_url || null, description || null]);
         
         res.json({ 
             success: true, 
@@ -834,7 +877,7 @@ app.put('/admin/products/:productId', async (req, res) => {
     
     try {
         const { productId } = req.params;
-        const { name, category, sub_category_id, base_price, image_url, description, show_description_popup } = req.body;
+        const { name, category, sub_category_id, base_price, image_url, description } = req.body;
         
         if (!name || !base_price) {
             return res.status(400).json({ 
@@ -845,10 +888,10 @@ app.put('/admin/products/:productId', async (req, res) => {
         
         const result = await client.query(`
             UPDATE products 
-            SET name = $1, category = $2, sub_category_id = $3, base_price = $4, image_url = $5, description = $6, show_description_popup = $7, updated_at = NOW()
-            WHERE id = $8
-            RETURNING id, name, category, sub_category_id, base_price, image_url, description, show_description_popup, updated_at
-        `, [name, category || '', sub_category_id || null, base_price, image_url, description, show_description_popup !== undefined ? show_description_popup : false, productId]);
+            SET name = $1, category = $2, sub_category_id = $3, base_price = $4, image_url = $5, description = $6, updated_at = NOW()
+            WHERE id = $7
+            RETURNING id, name, category, sub_category_id, base_price, image_url, description, updated_at
+        `, [name, category || '', sub_category_id || null, base_price, image_url, description, productId]);
         
         if (result.rows.length === 0) {
             return res.status(404).json({ 
@@ -1765,4 +1808,3 @@ app.get('/admin/sales/analytics', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
-

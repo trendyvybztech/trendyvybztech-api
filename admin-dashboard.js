@@ -1035,13 +1035,11 @@ async function viewOrderDetails(orderId) {
         
         const itemsHTML = items.map(item => {
             let variantDisplay = 'Standard';
-            let categoryDisplay = '';
             try {
                 if (item.variant_details) {
                     const details = typeof item.variant_details === 'string' ? 
                         JSON.parse(item.variant_details) : item.variant_details;
                     variantDisplay = details.colour || details.color || details.variant || 'Standard';
-                    categoryDisplay = details.category || '';
                 }
             } catch (e) {
                 variantDisplay = 'Standard';
@@ -1049,10 +1047,7 @@ async function viewOrderDetails(orderId) {
             
             return `
                 <tr>
-                    <td>
-                        <div>${item.product_name}</div>
-                        ${categoryDisplay ? `<small style="color: #888; font-size: 0.85rem;">${categoryDisplay}</small>` : ''}
-                    </td>
+                    <td>${item.product_name}</td>
                     <td>${variantDisplay}</td>
                     <td>${item.quantity}</td>
                     <td>JMD $${parseFloat(item.unit_price).toFixed(2)}</td>
@@ -1114,11 +1109,22 @@ async function viewOrderDetails(orderId) {
                         <p style="font-size: 1.2rem; color: var(--primary);"><strong>Total:</strong> JMD $${parseFloat(order.total).toFixed(2)}</p>
                     </div>
                     
-                    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
-                        ${order.order_status !== 'delivered' && order.order_status !== 'refunded' ? `
-                            <button class="btn-primary" onclick="updateOrderStatus('${order.order_id}', 'delivered')" style="background: var(--success);">
-                                ✅ Mark as Completed
-                            </button>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        ${order.order_status !== 'refunded' ? `
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <label style="font-weight: 600;">Update Status:</label>
+                                <select id="statusSelect-${order.order_id}" style="padding: 0.5rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 5px;">
+                                    <option value="pending" ${order.order_status === 'pending' ? 'selected' : ''}>Pending</option>
+                                    <option value="confirmed" ${order.order_status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
+                                    <option value="packed" ${order.order_status === 'packed' ? 'selected' : ''}>Packed</option>
+                                    <option value="ready_for_pickup" ${order.order_status === 'ready_for_pickup' ? 'selected' : ''}>Ready for Pickup</option>
+                                    <option value="shipped" ${order.order_status === 'shipped' ? 'selected' : ''}>Shipped</option>
+                                    <option value="delivered" ${order.order_status === 'delivered' ? 'selected' : ''}>Delivered</option>
+                                </select>
+                                <button class="btn-primary" onclick="updateOrderStatusFromDropdown('${order.order_id}')">
+                                    Update Status
+                                </button>
+                            </div>
                         ` : ''}
                         ${order.order_status !== 'refunded' ? `
                             <button class="btn-secondary" onclick="refundOrder('${order.order_id}')" style="background: var(--danger);">
@@ -1135,6 +1141,34 @@ async function viewOrderDetails(orderId) {
     } catch (error) {
         console.error('Error loading order details:', error);
         alert('Failed to load order details');
+    }
+}
+
+async function updateOrderStatusFromDropdown(orderId) {
+    const selectElement = document.getElementById(`statusSelect-${orderId}`);
+    const newStatus = selectElement.value;
+    
+    try {
+        const response = await fetch(`${API_URL}/orders/${orderId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: newStatus })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showNotification(`Order status updated to ${newStatus}`, 'success');
+            document.querySelector('.modal').remove();
+            loadOrders();
+        } else {
+            showNotification(data.error || 'Failed to update status', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating order status:', error);
+        showNotification('Failed to update order status', 'error');
     }
 }
 
