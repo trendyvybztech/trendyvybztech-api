@@ -128,8 +128,17 @@ app.get('/api/products/:id', async (req, res) => {
         const { id } = req.params;
         const query = `
             SELECT 
-                p.id, p.name, p.category, p.sub_category_id, p.base_price, 
-                p.image_url, p.description, p.is_active,
+                p.id, 
+                p.name, 
+                p.category, 
+                p.sub_category_id,
+                sc.name as sub_category_name,
+                mc.name as main_category_name,
+                p.base_price as price, 
+                p.image_url as image, 
+                p.description, 
+                p.is_active,
+                p.show_description_popup,
                 json_agg(
                     json_build_object(
                         'variant_id', pv.id,
@@ -137,20 +146,58 @@ app.get('/api/products/:id', async (req, res) => {
                         'value', pv.variant_value,
                         'stock', pv.stock_quantity,
                         'sku', pv.sku,
-                        'is_available', pv.is_available
+                        'is_available', pv.is_available,
+                        'image_url', pv.image_url,
+                        'variant_price', pv.variant_price
                     )
-                ) as variants
+                ) FILTER (WHERE pv.id IS NOT NULL) as variants
             FROM products p
             LEFT JOIN product_variants pv ON p.id = pv.product_id
+            LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+            LEFT JOIN main_categories mc ON sc.main_category_id = mc.id
             WHERE p.id = $1 AND p.is_active = true
-            GROUP BY p.id, p.name, p.category, p.sub_category_id, p.base_price, p.image_url, p.description, p.is_active;
+            GROUP BY p.id, p.name, p.category, p.sub_category_id, sc.name, mc.name, 
+                     p.base_price, p.image_url, p.description, p.is_active, p.show_description_popup;
         `;
         
         const result = await pool.query(query, [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Product not found' });
         }
-        res.json({ success: true, product: result.rows[0] });
+        
+        const product = result.rows[0];
+        
+        // Transform variants into grouped format
+        const variantGroups = {};
+        if (product.variants && product.variants.length > 0) {
+            product.variants.forEach(variant => {
+                if (!variant.type) return;
+                if (!variantGroups[variant.type]) {
+                    variantGroups[variant.type] = [];
+                }
+                variantGroups[variant.type].push({
+                    value: variant.value,
+                    stock: variant.stock,
+                    sku: variant.sku,
+                    is_available: variant.is_available
+                });
+            });
+        }
+        
+        const responseProduct = {
+            id: product.id,
+            name: product.name,
+            category: product.category,
+            sub_category: product.sub_category_name,
+            main_category: product.main_category_name,
+            price: parseFloat(product.price),
+            image: product.image,
+            description: product.description,
+            show_description_popup: product.show_description_popup,
+            variants: variantGroups
+        };
+        
+        res.json({ success: true, product: responseProduct });
     } catch (error) {
         console.error('Error fetching product:', error);
         res.status(500).json({ success: false, error: error.message });
