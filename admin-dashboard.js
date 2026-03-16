@@ -1035,11 +1035,13 @@ async function viewOrderDetails(orderId) {
         
         const itemsHTML = items.map(item => {
             let variantDisplay = 'Standard';
+            let categoryDisplay = '';
             try {
                 if (item.variant_details) {
                     const details = typeof item.variant_details === 'string' ? 
                         JSON.parse(item.variant_details) : item.variant_details;
                     variantDisplay = details.colour || details.color || details.variant || 'Standard';
+                    categoryDisplay = details.category || '';
                 }
             } catch (e) {
                 variantDisplay = 'Standard';
@@ -1047,7 +1049,10 @@ async function viewOrderDetails(orderId) {
             
             return `
                 <tr>
-                    <td>${item.product_name}</td>
+                    <td>
+                        <div>${item.product_name}</div>
+                        ${categoryDisplay ? `<small style="color: #888; font-size: 0.85rem;">${categoryDisplay}</small>` : ''}
+                    </td>
                     <td>${variantDisplay}</td>
                     <td>${item.quantity}</td>
                     <td>JMD $${parseFloat(item.unit_price).toFixed(2)}</td>
