@@ -1050,9 +1050,9 @@ async function viewOrderDetails(orderId) {
             return `
                 <tr>
                     <td>
-                        <a href="products.html?product=${item.product_id}" target="_blank" style="color: #00d9ff; text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+                        <span onclick="viewProductDetails(${item.product_id})" style="color: #00d9ff; cursor: pointer; text-decoration: underline;">
                             ${item.product_name} 🔗
-                        </a>
+                        </span>
                         ${categoryDisplay ? `<div><small style="color: #888; font-size: 0.85rem;">${categoryDisplay}</small></div>` : ''}
                     </td>
                     <td>${variantDisplay}</td>
@@ -1201,6 +1201,78 @@ async function updateOrderStatus(orderId, newStatus) {
     } catch (error) {
         console.error('Error updating order status:', error);
         showNotification(error.message || 'Failed to update order status', 'error');
+    }
+}
+
+async function viewProductDetails(productId) {
+    try {
+        const response = await fetch(`${API_URL}/products/${productId}`);
+        const data = await response.json();
+        
+        if (!data.success || !data.product) {
+            alert('Product not found');
+            return;
+        }
+        
+        const product = data.product;
+        
+        // Build variants display
+        let variantsHTML = '';
+        if (product.variants && Object.keys(product.variants).length > 0) {
+            variantsHTML = '<div style="margin-top: 1rem;"><h4>Available Variants:</h4><ul style="list-style: none; padding: 0;">';
+            for (const [type, values] of Object.entries(product.variants)) {
+                variantsHTML += `<li style="margin: 0.5rem 0;"><strong>${type}:</strong> `;
+                variantsHTML += values.map(v => {
+                    const stockBadge = v.stock > 0 ? 
+                        `<span style="color: #00D9FF;">(${v.stock} in stock)</span>` : 
+                        '<span style="color: #ff4444;">(Out of stock)</span>';
+                    return `${v.value} ${stockBadge}`;
+                }).join(', ');
+                variantsHTML += '</li>';
+            }
+            variantsHTML += '</ul></div>';
+        }
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 700px;">
+                <div class="modal-header">
+                    <h2>📦 ${product.name}</h2>
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    ${product.image ? `<img src="${product.image}" alt="${product.name}" style="max-width: 100%; height: auto; border-radius: 10px; margin-bottom: 1rem;">` : ''}
+                    
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Price:</strong> <span style="color: #00D9FF; font-size: 1.2rem;">JMD $${parseFloat(product.price).toFixed(2)}</span>
+                    </div>
+                    
+                    ${product.sub_category ? `<div style="margin-bottom: 1rem;"><strong>Category:</strong> ${product.main_category || ''} > ${product.sub_category}</div>` : ''}
+                    
+                    ${product.description ? `<div style="margin-bottom: 1rem;"><strong>Description:</strong><p style="color: #ccc;">${product.description}</p></div>` : ''}
+                    
+                    ${variantsHTML}
+                    
+                    <div style="margin-top: 2rem; text-align: right;">
+                        <button class="btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Click outside to close
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        document.body.appendChild(modal);
+    } catch (error) {
+        console.error('Error loading product details:', error);
+        alert('Failed to load product details');
     }
 }
 
