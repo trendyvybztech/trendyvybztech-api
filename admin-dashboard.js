@@ -1050,8 +1050,10 @@ async function viewOrderDetails(orderId) {
             return `
                 <tr>
                     <td>
-                        <div>${item.product_name}</div>
-                        ${categoryDisplay ? `<small style="color: #888; font-size: 0.85rem;">${categoryDisplay}</small>` : ''}
+                        <a href="products.html?product=${item.product_id}" target="_blank" style="color: #00d9ff; text-decoration: none; cursor: pointer;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+                            ${item.product_name} 🔗
+                        </a>
+                        ${categoryDisplay ? `<div><small style="color: #888; font-size: 0.85rem;">${categoryDisplay}</small></div>` : ''}
                     </td>
                     <td>${variantDisplay}</td>
                     <td>${item.quantity}</td>

@@ -261,12 +261,17 @@ app.post('/api/orders', async (req, res) => {
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
             `;
             
+            const variantDetailsWithCategory = {
+                ...item.variants,
+                category: item.category
+            };
+            
             await client.query(orderItemQuery, [
                 db_order_id,
                 item.product_id,
                 variant.id,
                 item.product_name,
-                JSON.stringify(item.variants),
+                JSON.stringify(variantDetailsWithCategory),
                 item.quantity,
                 item.unit_price,
                 item.total_price
@@ -595,6 +600,7 @@ app.get('/api/orders/:order_id', async (req, res) => {
                 o.*,
                 json_agg(
                     json_build_object(
+                        'product_id', oi.product_id,
                         'product_name', oi.product_name,
                         'variant_details', oi.variant_details,
                         'quantity', oi.quantity,
