@@ -6,6 +6,8 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -1192,6 +1194,405 @@ app.delete('/admin/promotional-banners/:id', async (req, res) => {
     } catch (error) {
         console.error('Delete banner error:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ============================================
+// CUSTOMER AUTHENTICATION ENDPOINTS
+// ============================================
+
+// Helper function to generate session token
+function generateSessionToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+// Helper function to verify session
+async function verifyCustomerSession(req, res, next) {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        
+        if (!token) {
+            return res.status(401).json({ success: false, error: 'No session token provided' });
+        }
+
+        const sessionQuery = `
+            SELECT cs.*, c.* 
+            FROM customer_sessions cs
+            JOIN customers c ON cs.customer_id = c.id
+            WHERE cs.session_token = $1 AND cs.expires_at > NOW() AND c.is_active = true
+        `;
+        
+        const result = await pool.query(sessionQuery, [token]);
+        
+        if (result.rows.length === 0) {
+            return res.status(401).json({ success: false, error: 'Invalid or expired session' });
+        }
+
+        // Update last activity
+        await pool.query(
+            'UPDATE customer_sessions SET last_activity = NOW() WHERE session_token = $1',
+            [token]
+        );
+
+        req.customer = result.rows[0];
+        next();
+    } catch (error) {
+        console.error('Session verification error:', error);
+        res.status(500).json({ success: false, error: 'Authentication error' });
+    }
+}
+
+// Register new customer
+app.post('/api/customers/register', async (req, res) => {
+    try {
+        const { name, email, phone, password } = req.body;
+
+        // Validate input
+        if (!name || !password || (!email && !phone)) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Name, password, and either email or phone are required' 
+            });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Password must be at least 6 characters' 
+            });
+        }
+
+        // Check if customer already exists
+        const existingQuery = `
+            SELECT id FROM customers 
+            WHERE (email = $1 AND email IS NOT NULL) OR (phone = $2 AND phone IS NOT NULL)
+        `;
+        const existing = await pool.query(existingQuery, [email, phone]);
+
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'An account with this email or phone already exists' 
+            });
+        }
+
+        // Hash password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create customer
+        const insertQuery = `
+            INSERT INTO customers (name, email, phone, password_hash, total_points, total_spent, total_orders)
+            VALUES ($1, $2, $3, $4, 0, 0, 0)
+            RETURNING id, name, email, phone, total_points, total_spent, total_orders, created_at
+        `;
+
+        const result = await pool.query(insertQuery, [name, email, phone, passwordHash]);
+        const customer = result.rows[0];
+
+        // Create session
+        const sessionToken = generateSessionToken();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        await pool.query(
+            `INSERT INTO customer_sessions (customer_id, session_token, expires_at, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [customer.id, sessionToken, expiresAt, req.ip, req.headers['user-agent']]
+        );
+
+        res.json({
+            success: true,
+            customer: {
+                id: customer.id,
+                name: customer.name,
+                email: customer.email,
+                phone: customer.phone,
+                total_points: customer.total_points,
+                total_spent: customer.total_spent,
+                total_orders: customer.total_orders
+            },
+            session_token: sessionToken
+        });
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ success: false, error: 'Failed to register' });
+    }
+});
+
+// Login
+app.post('/api/customers/login', async (req, res) => {
+    try {
+        const { identifier, password } = req.body; // identifier can be email or phone
+
+        if (!identifier || !password) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Email/phone and password are required' 
+            });
+        }
+
+        // Find customer by email or phone
+        const customerQuery = `
+            SELECT * FROM customers 
+            WHERE (email = $1 OR phone = $1) AND is_active = true
+        `;
+        const result = await pool.query(customerQuery, [identifier]);
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Invalid email/phone or password' 
+            });
+        }
+
+        const customer = result.rows[0];
+
+        // Check if password exists (old customers might not have one)
+        if (!customer.password_hash) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Please reset your password to continue' 
+            });
+        }
+
+        // Verify password
+        const validPassword = await bcrypt.compare(password, customer.password_hash);
+
+        if (!validPassword) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Invalid email/phone or password' 
+            });
+        }
+
+        // Update last login
+        await pool.query('UPDATE customers SET last_login = NOW() WHERE id = $1', [customer.id]);
+
+        // Create session
+        const sessionToken = generateSessionToken();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+        await pool.query(
+            `INSERT INTO customer_sessions (customer_id, session_token, expires_at, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [customer.id, sessionToken, expiresAt, req.ip, req.headers['user-agent']]
+        );
+
+        res.json({
+            success: true,
+            customer: {
+                id: customer.id,
+                name: customer.name,
+                email: customer.email,
+                phone: customer.phone,
+                total_points: customer.total_points,
+                total_spent: parseFloat(customer.total_spent),
+                total_orders: customer.total_orders
+            },
+            session_token: sessionToken
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ success: false, error: 'Failed to login' });
+    }
+});
+
+// Logout
+app.post('/api/customers/logout', verifyCustomerSession, async (req, res) => {
+    try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        
+        await pool.query('DELETE FROM customer_sessions WHERE session_token = $1', [token]);
+        
+        res.json({ success: true, message: 'Logged out successfully' });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ success: false, error: 'Failed to logout' });
+    }
+});
+
+// Get customer profile
+app.get('/api/customers/profile', verifyCustomerSession, async (req, res) => {
+    try {
+        const customer = req.customer;
+
+        res.json({
+            success: true,
+            customer: {
+                id: customer.id,
+                name: customer.name,
+                email: customer.email,
+                phone: customer.phone,
+                total_points: customer.total_points,
+                total_spent: parseFloat(customer.total_spent),
+                total_orders: customer.total_orders,
+                created_at: customer.created_at,
+                last_login: customer.last_login
+            }
+        });
+    } catch (error) {
+        console.error('Profile error:', error);
+        res.status(500).json({ success: false, error: 'Failed to load profile' });
+    }
+});
+
+// Update customer profile
+app.put('/api/customers/profile', verifyCustomerSession, async (req, res) => {
+    try {
+        const { name, email, phone } = req.body;
+        const customerId = req.customer.id;
+
+        const updateQuery = `
+            UPDATE customers 
+            SET name = COALESCE($1, name),
+                email = COALESCE($2, email),
+                phone = COALESCE($3, phone),
+                updated_at = NOW()
+            WHERE id = $4
+            RETURNING id, name, email, phone, total_points, total_spent, total_orders
+        `;
+
+        const result = await pool.query(updateQuery, [name, email, phone, customerId]);
+
+        res.json({
+            success: true,
+            customer: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ success: false, error: 'Failed to update profile' });
+    }
+});
+
+// Get customer orders
+app.get('/api/customers/orders', verifyCustomerSession, async (req, res) => {
+    try {
+        const customerId = req.customer.id;
+        const customerPhone = req.customer.phone;
+
+        const ordersQuery = `
+            SELECT 
+                o.id,
+                o.order_id,
+                o.customer_name,
+                o.customer_email,
+                o.customer_phone,
+                o.customer_address,
+                o.subtotal,
+                o.delivery_fee,
+                o.total,
+                o.payment_method,
+                o.order_status,
+                o.delivery_option,
+                o.created_at,
+                json_agg(
+                    json_build_object(
+                        'product_id', oi.product_id,
+                        'product_name', oi.product_name,
+                        'variant_details', oi.variant_details,
+                        'quantity', oi.quantity,
+                        'unit_price', oi.unit_price,
+                        'total_price', oi.total_price
+                    )
+                ) as items
+            FROM orders o
+            LEFT JOIN order_items oi ON o.id = oi.order_id
+            WHERE o.customer_phone = $1
+            GROUP BY o.id
+            ORDER BY o.created_at DESC
+        `;
+
+        const result = await pool.query(ordersQuery, [customerPhone]);
+
+        res.json({
+            success: true,
+            orders: result.rows
+        });
+    } catch (error) {
+        console.error('Orders error:', error);
+        res.status(500).json({ success: false, error: 'Failed to load orders' });
+    }
+});
+
+// Get points history
+app.get('/api/customers/points', verifyCustomerSession, async (req, res) => {
+    try {
+        const customerId = req.customer.id;
+
+        const pointsQuery = `
+            SELECT 
+                id,
+                transaction_type,
+                points_change,
+                points_balance,
+                order_id,
+                order_total,
+                notes,
+                created_at
+            FROM points_transactions
+            WHERE customer_id = $1
+            ORDER BY created_at DESC
+            LIMIT 50
+        `;
+
+        const result = await pool.query(pointsQuery, [customerId]);
+
+        res.json({
+            success: true,
+            current_balance: req.customer.total_points,
+            history: result.rows
+        });
+    } catch (error) {
+        console.error('Points history error:', error);
+        res.status(500).json({ success: false, error: 'Failed to load points history' });
+    }
+});
+
+// Change password
+app.post('/api/customers/change-password', verifyCustomerSession, async (req, res) => {
+    try {
+        const { current_password, new_password } = req.body;
+        const customerId = req.customer.id;
+
+        if (!current_password || !new_password) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Current and new password are required' 
+            });
+        }
+
+        if (new_password.length < 6) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'New password must be at least 6 characters' 
+            });
+        }
+
+        // Verify current password
+        const validPassword = await bcrypt.compare(current_password, req.customer.password_hash);
+
+        if (!validPassword) {
+            return res.status(401).json({ 
+                success: false, 
+                error: 'Current password is incorrect' 
+            });
+        }
+
+        // Hash new password
+        const newPasswordHash = await bcrypt.hash(new_password, 10);
+
+        // Update password
+        await pool.query(
+            'UPDATE customers SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+            [newPasswordHash, customerId]
+        );
+
+        res.json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({ success: false, error: 'Failed to change password' });
     }
 });
 
