@@ -1350,7 +1350,9 @@ app.post('/api/customers/login', async (req, res) => {
         if (!customer.password_hash) {
             return res.status(401).json({ 
                 success: false, 
-                error: 'Please reset your password to continue' 
+                error: 'No password set for this account. Please set a password to continue.',
+                needs_password_setup: true,
+                identifier: identifier
             });
         }
 
@@ -1393,6 +1395,84 @@ app.post('/api/customers/login', async (req, res) => {
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ success: false, error: 'Failed to login' });
+    }
+});
+
+// Set password for existing customers who don't have one (no email required)
+app.post('/api/customers/set-password', async (req, res) => {
+    try {
+        const { identifier, new_password } = req.body;
+
+        if (!identifier || !new_password) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Email/phone and new password are required' 
+            });
+        }
+
+        if (new_password.length < 6) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Password must be at least 6 characters' 
+            });
+        }
+
+        // Find customer
+        const result = await pool.query(
+            `SELECT * FROM customers WHERE (email = $1 OR phone = $1) AND is_active = true`,
+            [identifier]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'No account found with that email or phone number' 
+            });
+        }
+
+        const customer = result.rows[0];
+
+        // Only allow this endpoint if no password is set (security guard)
+        if (customer.password_hash) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'This account already has a password. Use "Change Password" in your dashboard instead.' 
+            });
+        }
+
+        // Hash and save the new password
+        const passwordHash = await bcrypt.hash(new_password, 10);
+        await pool.query(
+            'UPDATE customers SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+            [passwordHash, customer.id]
+        );
+
+        // Create a session so they're logged in immediately
+        const sessionToken = generateSessionToken();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        await pool.query(
+            `INSERT INTO customer_sessions (customer_id, session_token, expires_at, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [customer.id, sessionToken, expiresAt, req.ip, req.headers['user-agent']]
+        );
+
+        res.json({
+            success: true,
+            message: 'Password set successfully. You are now logged in.',
+            customer: {
+                id: customer.id,
+                name: customer.name,
+                email: customer.email,
+                phone: customer.phone,
+                total_points: customer.total_points,
+                total_spent: parseFloat(customer.total_spent),
+                total_orders: customer.total_orders
+            },
+            session_token: sessionToken
+        });
+    } catch (error) {
+        console.error('Set password error:', error);
+        res.status(500).json({ success: false, error: 'Failed to set password' });
     }
 });
 
